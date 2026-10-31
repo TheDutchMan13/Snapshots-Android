@@ -20,7 +20,9 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen> {
   final _box = TextEditingController();
   String _q = '';
-  bool _look = false;
+
+  /// How results are ranked: 'mix' (words and content together), 'words', or 'look' (content).
+  String _mode = 'words';
   Map<String, dynamic>? _counts;
   Feed? _feed;
   int _gen = 0;
@@ -37,7 +39,7 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() {
       _q = q;
       _counts = null;
-      _feed = q.isEmpty ? null : _newFeed(q, _look);
+      _feed = q.isEmpty ? null : _newFeed(q, _mode);
     });
     if (q.isEmpty) return;
     try {
@@ -45,19 +47,27 @@ class _SearchScreenState extends State<SearchScreen> {
       if (!mounted || gen != _gen) return;
       final counts = Map<String, dynamic>.from(r as Map);
       setState(() => _counts = counts);
-      // Nothing by words, but something by content: show that instead.
-      if (!_look && counts['words'] == 0 && ((counts['content'] as int?) ?? 0) > 0) _setLook(true);
+      final words = (counts['words'] as int?) ?? 0, content = (counts['content'] as int?) ?? 0;
+      if (counts['mixed'] != null && words > 0 && content > 0) {
+        _setMode('mix');
+      } else if (words == 0 && content > 0) {
+        _setMode('look'); // nothing by words, but something by content: show that instead
+      } else if (_mode != 'words') {
+        _setMode('words');
+      }
     } on ApiError {
       // The grid shows the error.
     }
   }
 
-  Feed _newFeed(String q, bool look) => Feed(apiOf(context), {'q': q, if (look) 'look': true});
+  Feed _newFeed(String q, String mode) =>
+      Feed(apiOf(context), {'q': q, if (mode == 'look') 'look': true, if (mode == 'mix') 'mix': true});
 
-  void _setLook(bool look) {
+  void _setMode(String mode) {
+    if (mode == _mode) return;
     setState(() {
-      _look = look;
-      if (_q.isNotEmpty) _feed = _newFeed(_q, look);
+      _mode = mode;
+      if (_q.isNotEmpty) _feed = _newFeed(_q, mode);
     });
   }
 
@@ -94,17 +104,22 @@ class _SearchScreenState extends State<SearchScreen> {
               if (contentOn)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                  child: SegmentedButton<bool>(
-                    showSelectedIcon: false,
-                    segments: [
-                      ButtonSegment(value: false, label: Text('Words and names (${c['words']})')),
-                      ButtonSegment(value: true, label: Text("What's in it (${c['content']})")),
-                    ],
-                    selected: {_look},
-                    onSelectionChanged: (s) => _setLook(s.first),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SegmentedButton<String>(
+                      showSelectedIcon: false,
+                      segments: [
+                        if (c['mixed'] != null && (c['words'] as int? ?? 0) > 0)
+                          ButtonSegment(value: 'mix', label: Text('Best (${c['mixed']})')),
+                        ButtonSegment(value: 'words', label: Text('Words (${c['words']})')),
+                        ButtonSegment(value: 'look', label: Text("What's in it (${c['content']})")),
+                      ],
+                      selected: {_mode},
+                      onSelectionChanged: (s) => _setMode(s.first),
+                    ),
                   ),
                 ),
-              if (_look && c != null && c['content_ready'] != true)
+              if (_mode == 'look' && c != null && c['content_ready'] != true)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   child: Text('Search by what is in the photo is still getting ready on the PC.'),
