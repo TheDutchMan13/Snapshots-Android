@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Snapshots mark: a ring and a dot, as on the Windows icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#FFFFFF" android:strokeWidth="6.7"
+        android:pathData="M54,31.3 a22.7,22.7 0 1,0 0.001,0 Z" />
+    <path android:fillColor="#FFFFFF"
+        android:pathData="M54,43.3 a10.7,10.7 0 1,0 0.001,0 Z" />
+</vector>
