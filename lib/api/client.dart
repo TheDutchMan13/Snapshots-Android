@@ -15,6 +15,13 @@ class ApiError implements Exception {
   String toString() => message;
 }
 
+/// A sentence for any failure while loading: the server's own words, or a plain one when the
+/// answer made no sense (for example a Wi-Fi sign-in page instead of Snapshots).
+String errorText(Object e) => e is ApiError
+    ? e.message
+    : "Snapshots sent an answer the app didn't understand. If this Wi-Fi has a sign-in page, "
+        'sign in with the browser first, then try again.';
+
 /// Talks to one Snapshots server. Every request carries the session token as a Bearer token.
 class Api {
   Api({required String server, this.token, this.deviceCookie, this.onSignedOut})
@@ -55,6 +62,22 @@ class Api {
     if (s.isEmpty) return s;
     if (!s.startsWith('http://') && !s.startsWith('https://')) s = 'http://$s';
     return s;
+  }
+
+  /// True for a plain http:// address that is not a Tailscale one (100.64.0.0/10 or *.ts.net):
+  /// there the password and photos travel unencrypted over the network the phone is on.
+  static bool unencrypted(String input) {
+    final s = normalizeServer(input);
+    if (!s.startsWith('http://')) return false;
+    final host = Uri.tryParse(s)?.host.toLowerCase() ?? '';
+    if (host.isEmpty) return false;
+    if (host.endsWith('.ts.net')) return false;
+    final ip = host.split('.');
+    if (ip.length == 4 && ip.every((p) => int.tryParse(p) != null)) {
+      final a = int.parse(ip[0]), b = int.parse(ip[1]);
+      if (a == 100 && b >= 64 && b <= 127) return false;
+    }
+    return true;
   }
 
   /// Headers for images and videos loaded straight from the server.

@@ -33,31 +33,31 @@ class _SearchScreenState extends State<SearchScreen> {
     super.dispose();
   }
 
+  /// Asks how many results each kind of search has first, then makes the one grid in the best
+  /// mode (a second grid would throw away the first one's request, which can be a heavy one).
   Future<void> _search(String text) async {
     final q = text.trim();
     final gen = ++_gen;
     setState(() {
       _q = q;
       _counts = null;
-      _feed = q.isEmpty ? null : _newFeed(q, _mode);
+      _feed = null;
     });
     if (q.isEmpty) return;
+    var mode = _mode;
     try {
       final r = await apiOf(context).get('/api/search', query: {'q': q});
       if (!mounted || gen != _gen) return;
-      final counts = Map<String, dynamic>.from(r as Map);
-      setState(() => _counts = counts);
-      final words = (counts['words'] as int?) ?? 0, content = (counts['content'] as int?) ?? 0;
-      if (counts['mixed'] != null && words > 0 && content > 0) {
-        _setMode('mix');
-      } else if (words == 0 && content > 0) {
-        _setMode('look'); // nothing by words, but something by content: show that instead
-      } else if (_mode != 'words') {
-        _setMode('words');
-      }
-    } on ApiError {
+      _counts = Map<String, dynamic>.from(r as Map);
+      mode = searchMode(_counts!);
+    } catch (_) {
       // The grid shows the error.
+      if (!mounted || gen != _gen) return;
     }
+    setState(() {
+      _mode = mode;
+      _feed = _newFeed(q, mode);
+    });
   }
 
   Feed _newFeed(String q, String mode) =>
@@ -98,8 +98,10 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
       ),
-      body: _feed == null
+      body: _q.isEmpty
           ? const _Explore()
+          : _feed == null
+          ? const Center(child: CircularProgressIndicator())
           : Column(children: [
               if (contentOn)
                 Padding(
@@ -136,6 +138,15 @@ class _SearchScreenState extends State<SearchScreen> {
             ]),
     );
   }
+}
+
+/// Which results to show first: 'mix' when both words and content find something, 'look' when
+/// only content does, otherwise 'words'.
+String searchMode(Map<String, dynamic> counts) {
+  final words = (counts['words'] as int?) ?? 0, content = (counts['content'] as int?) ?? 0;
+  if (counts['mixed'] != null && words > 0 && content > 0) return 'mix';
+  if (words == 0 && content > 0) return 'look';
+  return 'words';
 }
 
 class _Explore extends StatefulWidget {
@@ -186,8 +197,8 @@ class _ExploreState extends State<_Explore> {
         ];
         _error = null;
       });
-    } on ApiError catch (e) {
-      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 

@@ -154,8 +154,17 @@ class _LoginScreenState extends State<LoginScreen> {
             autocorrect: false,
             textInputAction: TextInputAction.go,
             decoration: const InputDecoration(labelText: 'Address', hintText: '100.101.102.103:8000'),
+            onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _connect(),
           ),
+          if (Api.unencrypted(_server.text)) ...[
+            const SizedBox(height: 12),
+            _Warning(
+              'This is not a Tailscale address, and the connection is not encrypted: your password and '
+              'photos travel over this network as they are, for others on it to read. Use the PC\'s '
+              'Tailscale address (100.x.y.z or a name ending in .ts.net) if you can.',
+            ),
+          ],
         ];
       case _Step.password:
         return [
@@ -203,5 +212,26 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ];
     }
+  }
+}
+
+/// A note that something is risky, but allowed.
+class _Warning extends StatelessWidget {
+  const _Warning(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: c.errorContainer, borderRadius: BorderRadius.circular(12)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(Icons.warning_amber_rounded, color: c.onErrorContainer),
+        const SizedBox(width: 10),
+        Expanded(child: Text(text, style: TextStyle(color: c.onErrorContainer))),
+      ]),
+    );
   }
 }

@@ -45,8 +45,8 @@ class _PeopleScreenState extends State<PeopleScreen> {
                     : null;
         _error = null;
       });
-    } on ApiError catch (e) {
-      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 

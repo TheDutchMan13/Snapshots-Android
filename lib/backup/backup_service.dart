@@ -36,7 +36,10 @@ class BackupRun {
   final status = BackupStatus();
   late BackupDb _db;
   late Api _api;
-  int _sent = 0, _already = 0, _rejected = 0;
+  int _sent = 0, _already = 0, _rejected = 0, _failed = 0;
+
+  /// Failed uploads in a row (saving on the PC failed): after a few, stop until the next run.
+  int _failedInRow = 0;
   DateTime _lastBeat = DateTime(0);
 
   /// Returns a sentence for the Backup screen.
@@ -154,6 +157,7 @@ class BackupRun {
       if (_sent > 0) '$_sent sent',
       if (_already > 0) '$_already were already in Snapshots',
       if (_rejected > 0) "$_rejected couldn't be backed up",
+      if (_failed > 0) "$_failed couldn't be saved on the PC and will be tried again",
     ];
     return parts.isEmpty ? '' : '${parts.join(', ')}.';
   }
@@ -270,8 +274,9 @@ class BackupRun {
     } on DioException catch (e) {
       final err = _api.toApiError(e);
       final code = err.status;
-      // This one file was refused (too big for a proxy in between, say): note it and go on with
-      // the others. Without a connection, signed out, or the library drive offline: stop for now.
+      // This one file was refused (too big for a proxy in between, or 413 for a file over the
+      // PC's limit): note it and go on with the others. Without a connection, signed out, the
+      // library drive offline or full (507): stop for now; the file is tried again next time.
       if (code != null && code >= 400 && code < 500 && code != 401 && code != 409 && code != 429) {
         _rejected++;
         await _done(a, 'rejected', sha1: hash, name: name, reason: err.message);
@@ -281,10 +286,20 @@ class BackupRun {
     }
     final results = (resp.data['results'] as List?) ?? const [];
     final res = results.isNotEmpty ? Map<String, dynamic>.from(results.first as Map) : <String, dynamic>{};
-    final st = res['status'] as String? ?? 'rejected';
+    final st = uploadOutcome(res);
+    final reason = res['reason'] as String? ?? 'Rejected by Snapshots.';
+    if (st == 'retry') {
+      // Saving failed on the PC (a full or busy drive, say): not the file's fault. It stays
+      // "hashed", so the next run sends it again.
+      _failed++;
+      await _done(a, 'hashed', sha1: hash, name: name, reason: reason);
+      if (++_failedInRow >= 3) throw ApiError('Snapshots could not save the photos on the PC: $reason');
+      return;
+    }
+    _failedInRow = 0;
     if (st == 'rejected') {
       _rejected++;
-      await _done(a, 'rejected', sha1: hash, name: name, reason: res['reason'] as String? ?? 'Rejected by Snapshots.');
+      await _done(a, 'rejected', sha1: hash, name: name, reason: reason);
       return;
     }
     final id = res['id'] as int?;
@@ -295,6 +310,14 @@ class BackupRun {
       _already++;
     }
     await _done(a, 'sent', sha1: hash, serverId: id, name: name);
+  }
+
+  /// What the server said about one uploaded file: 'added', 'duplicate', 'restored', 'rejected' (the file
+  /// itself was turned away, like an unsupported type) or 'retry' (saving failed on the PC).
+  static String uploadOutcome(Map<String, dynamic> res) {
+    final st = res['status'] as String? ?? 'rejected';
+    if (st == 'rejected' && '${res['reason'] ?? ''}'.startsWith('Upload failed')) return 'retry';
+    return st;
   }
 
   /// Snapshots dates a photo from the date inside it, or in its name. A file with neither (some

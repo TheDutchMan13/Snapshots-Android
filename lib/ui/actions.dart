@@ -119,9 +119,21 @@ class AssetActions {
       () => api.post('/api/albums/$albumId/remove', {'ids': [for (final a in items) a.id]}),
       done: '${_n(items)} removed from the album');
 
+  static Future<Directory> _shareDir() async => Directory(p.join((await getTemporaryDirectory()).path, 'share'));
+
+  /// Deletes the originals downloaded for sharing (on app start and after the locked folder).
+  static Future<void> clearShared() async {
+    try {
+      final dir = await _shareDir();
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } catch (_) {
+      // Tried again next time.
+    }
+  }
+
   /// Downloads the originals into the app's cache, with a progress dialog. Null if cancelled.
   Future<List<File>?> _download(List<Asset> items) async {
-    final dir = Directory(p.join((await getTemporaryDirectory()).path, 'share'));
+    final dir = await _shareDir();
     if (await dir.exists()) await dir.delete(recursive: true);
     await dir.create(recursive: true);
     final cancel = CancelToken();
@@ -168,10 +180,22 @@ class AssetActions {
     return ok ? files : null;
   }
 
-  Future<void> share(List<Asset> items) async {
+  /// With [keep] false (the locked folder), the downloaded copies are deleted once the share
+  /// sheet closes.
+  Future<void> share(List<Asset> items, {bool keep = true}) async {
     final files = await _download(items);
     if (files == null) return;
-    await SharePlus.instance.share(ShareParams(files: [for (final f in files) XFile(f.path)]));
+    try {
+      await SharePlus.instance.share(ShareParams(files: [for (final f in files) XFile(f.path)]));
+    } finally {
+      if (!keep) {
+        for (final f in files) {
+          try {
+            await f.parent.delete(recursive: true);
+          } catch (_) {}
+        }
+      }
+    }
   }
 
   /// Saves the originals to the phone's gallery (Pictures/Snapshots, Movies/Snapshots).

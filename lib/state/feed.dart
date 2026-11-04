@@ -19,6 +19,7 @@ class Feed extends ChangeNotifier {
   bool loading = false;
   String? error;
   int _gen = 0;
+  bool _disposed = false;
 
   bool get isEmpty => items.isEmpty && done;
 
@@ -37,16 +38,17 @@ class Feed extends ChangeNotifier {
         'limit': pageSize,
         if (_next != null) 'cursor': _next,
       });
-      if (gen != _gen) return;
+      if (_disposed || gen != _gen) return;
       for (final j in (data['items'] as List)) {
         items.add(Asset(Map<String, dynamic>.from(j as Map)));
       }
       _next = data['next'] as String?;
       done = _next == null || _look;
-    } on ApiError catch (e) {
-      if (gen == _gen) error = e.message;
+    } catch (e) {
+      // Any failure, also an answer that isn't Snapshots, shows a message with "Try again".
+      if (gen == _gen) error = errorText(e);
     } finally {
-      if (gen == _gen) {
+      if (!_disposed && gen == _gen) {
         loading = false;
         notifyListeners();
       }
@@ -89,4 +91,17 @@ class Feed extends ChangeNotifier {
   }
 
   void changed() => notifyListeners();
+
+  /// A screen can close (and dispose the feed) while a page is still loading: its answer is dropped.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _gen++;
+    super.dispose();
+  }
 }

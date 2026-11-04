@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'state/session.dart';
+import 'ui/actions.dart';
 import 'ui/home.dart';
 import 'ui/login_screen.dart';
 import 'ui/theme.dart';
@@ -10,6 +11,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final session = Session();
   await session.load();
+  // Copies left from sharing last time (the share sheet doesn't say when the other app is done).
+  AssetActions.clearShared();
   runApp(ChangeNotifierProvider.value(value: session, child: const SnapshotsApp()));
 }
 

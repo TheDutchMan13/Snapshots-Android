@@ -34,8 +34,8 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
         _albums = [for (final j in r['albums'] as List) Album(Map<String, dynamic>.from(j as Map))];
         _error = null;
       });
-    } on ApiError catch (e) {
-      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 
@@ -69,7 +69,21 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
             ? ListView(children: [
                 Padding(
                   padding: const EdgeInsets.all(32),
-                  child: Center(child: _error != null ? Text(_error!, textAlign: TextAlign.center) : const CircularProgressIndicator()),
+                  child: Center(
+                  child: _error != null
+                      ? Column(mainAxisSize: MainAxisSize.min, children: [
+                          Text(_error!, textAlign: TextAlign.center),
+                          const SizedBox(height: 8),
+                          OutlinedButton(
+                            onPressed: () {
+                              setState(() => _error = null);
+                              _load();
+                            },
+                            child: const Text('Try again'),
+                          ),
+                        ])
+                      : const CircularProgressIndicator(),
+                  ),
                 ),
               ])
             : albums.isEmpty

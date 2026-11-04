@@ -36,6 +36,9 @@ class _ViewerState extends State<Viewer> {
   bool _live = false;
 
   Feed get feed => widget.feed;
+
+  /// The locked folder's photos are not kept on the phone.
+  bool get _cache => widget.mode != GridMode.locked;
   Asset? get current => _index < feed.items.length ? feed.items[_index] : null;
 
   @override
@@ -107,16 +110,16 @@ class _ViewerState extends State<Viewer> {
             itemBuilder: (context, i) {
               final item = feed.items[i];
               if (item.isVideo) {
-                return _VideoPage(key: ValueKey('v${item.id}'), api: api, asset: item, active: i == _index, onTap: _toggleChrome, chrome: _chrome);
+                return _VideoPage(key: ValueKey('v${item.id}'), api: api, asset: item, active: i == _index, onTap: _toggleChrome, chrome: _chrome, cache: _cache);
               }
               if (item.live && _live && i == _index) {
-                return _VideoPage(key: ValueKey('m${item.id}'), api: api, asset: item, active: true, motion: true, onTap: () => setState(() => _live = false), chrome: false);
+                return _VideoPage(key: ValueKey('m${item.id}'), api: api, asset: item, active: true, motion: true, onTap: () => setState(() => _live = false), chrome: false, cache: _cache);
               }
               return _PhotoPage(
                 key: ValueKey('p${item.id}'),
                 api: api,
                 asset: item,
-                cache: widget.mode != GridMode.locked,
+                cache: _cache,
                 onTap: _toggleChrome,
               );
             },
@@ -176,7 +179,7 @@ class _ViewerState extends State<Viewer> {
           _BarButton(icon: Icons.delete_forever_outlined, label: 'Delete', onTap: () => _do((x, one) => x.deleteForever(one), removes: true)),
       ] else ...[
         _BarButton(icon: Icons.share_outlined, label: 'Share', onTap: () => _do((x, one) async {
-              await x.share(one);
+              await x.share(one, keep: _cache);
               return true;
             })),
         if (widget.mode != GridMode.locked)
@@ -206,7 +209,7 @@ class _ViewerState extends State<Viewer> {
         expand: false,
         initialChildSize: .55,
         maxChildSize: .92,
-        builder: (c, scroll) => InfoSheet(asset: a, scroll: scroll),
+        builder: (c, scroll) => InfoSheet(asset: a, scroll: scroll, cache: _cache),
       ),
     );
   }
@@ -280,6 +283,7 @@ class _VideoPage extends StatefulWidget {
     required this.onTap,
     required this.chrome,
     this.motion = false,
+    this.cache = true,
   });
 
   final Api api;
@@ -287,6 +291,7 @@ class _VideoPage extends StatefulWidget {
   final bool active;
   final bool motion;
   final bool chrome;
+  final bool cache;
   final VoidCallback onTap;
 
   @override
@@ -369,7 +374,7 @@ class _VideoPageState extends State<_VideoPage> {
       body = Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(_error!, style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center)));
     } else if (p == null || !p.value.isInitialized) {
       body = Stack(fit: StackFit.expand, children: [
-        if (widget.asset.hasThumb) Image(image: serverImage(widget.api, widget.asset.thumbPath()), fit: BoxFit.contain),
+        if (widget.asset.hasThumb) Image(image: serverImage(widget.api, widget.asset.thumbPath(), cache: widget.cache), fit: BoxFit.contain),
         Center(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const CircularProgressIndicator(),
@@ -428,10 +433,13 @@ class _Controls extends StatelessWidget {
 
 /// Details about one photo: date, place, camera, people, albums…
 class InfoSheet extends StatefulWidget {
-  const InfoSheet({super.key, required this.asset, required this.scroll});
+  const InfoSheet({super.key, required this.asset, required this.scroll, this.cache = true});
 
   final Asset asset;
   final ScrollController scroll;
+
+  /// False in the locked folder: nothing from it is kept on the phone.
+  final bool cache;
 
   @override
   State<InfoSheet> createState() => _InfoSheetState();
@@ -451,8 +459,8 @@ class _InfoSheetState extends State<InfoSheet> {
     try {
       final r = await apiOf(context).get('/api/assets/${widget.asset.id}');
       if (mounted) setState(() => _d = AssetDetail(Map<String, dynamic>.from(r as Map)));
-    } on ApiError catch (e) {
-      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 
@@ -490,7 +498,7 @@ class _InfoSheetState extends State<InfoSheet> {
           child: Wrap(spacing: 8, runSpacing: 8, children: [
             for (final p in d.people)
               ActionChip(
-                avatar: CircleAvatar(backgroundImage: serverImage(apiOf(context), '/api/faces/${p.faceId}/thumb')),
+                avatar: CircleAvatar(backgroundImage: serverImage(apiOf(context), '/api/faces/${p.faceId}/thumb', cache: widget.cache)),
                 label: Text(p.name ?? 'Not named yet'),
                 onPressed: () => openGrid(context, p.name ?? 'Not named yet', {'person': p.personId, 'archived': 'hide', 'stacks': true}),
               ),

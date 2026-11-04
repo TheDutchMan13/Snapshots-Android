@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../api/client.dart';
+import '../backup/background.dart';
+import '../backup/backup_db.dart';
 
 class User {
   User({required this.id, required this.username, required this.isAdmin});
@@ -30,7 +32,23 @@ class LoginStep {
 /// Which server this phone uses and who is signed in. Kept in Android's encrypted storage.
 class Session extends ChangeNotifier {
   static const _storage = FlutterSecureStorage();
-  static const _kServer = 'server', _kToken = 'token', _kUser = 'user', _kDevice = 'device';
+  static const _kServer = 'server', _kToken = 'token', _kUser = 'user';
+
+  /// The server the backup record (backup.db) belongs to. Kept after "Use another PC".
+  static const _kBackupServer = 'backup_server';
+
+  /// Older versions kept one device cookie for whatever server was used.
+  static const _kOldDevice = 'device';
+
+  /// Each server's device cookie is kept apart, so one PC's cookie is never sent to another.
+  static String _deviceKey(String server) => 'device|$server';
+
+  /// Stops the backup and forgets what was sent. Replaced in tests.
+  @visibleForTesting
+  static Future<void> Function() forgetBackup = () async {
+    await Backup.cancelAll();
+    await (await BackupDb.open()).clear();
+  };
 
   Api? api;
   User? user;
@@ -45,17 +63,39 @@ class Session extends ChangeNotifier {
     final server = await _storage.read(key: _kServer);
     final token = await _storage.read(key: _kToken);
     if (server == null || token == null) return null;
-    return Api(server: server, token: token, deviceCookie: await _storage.read(key: _kDevice));
+    return Api(server: server, token: token, deviceCookie: await _device(server));
+  }
+
+  /// This server's device cookie (or the old single one, if it was made for this server).
+  static Future<String?> _device(String server) async {
+    final own = await _storage.read(key: _deviceKey(server));
+    if (own != null) return own;
+    final old = await _storage.read(key: _kOldDevice);
+    if (old != null && await _storage.read(key: _kServer) == server) return old;
+    return null;
+  }
+
+  /// Moves the old single device cookie to its server's own key, or drops it when its server
+  /// isn't known any more.
+  static Future<void> _moveOldDevice() async {
+    final old = await _storage.read(key: _kOldDevice);
+    if (old == null) return;
+    final server = await _storage.read(key: _kServer);
+    if (server != null && await _storage.read(key: _deviceKey(server)) == null) {
+      await _storage.write(key: _deviceKey(server), value: old);
+    }
+    await _storage.delete(key: _kOldDevice);
   }
 
   Future<void> load() async {
     try {
+      await _moveOldDevice();
       final server = await _storage.read(key: _kServer);
       if (server != null) {
         api = Api(
           server: server,
           token: await _storage.read(key: _kToken),
-          deviceCookie: await _storage.read(key: _kDevice),
+          deviceCookie: await _storage.read(key: _deviceKey(server)),
           onSignedOut: _expired,
         );
         final u = await _storage.read(key: _kUser);
@@ -82,8 +122,13 @@ class Session extends ChangeNotifier {
     if (data['needs_setup'] == true) {
       throw ApiError('Snapshots on that PC is not set up yet. Create the first account on the PC, then sign in here.');
     }
+    // Another PC than the one the phone backed up to: what was sent there says nothing about
+    // this one, so the backup starts over (photos the PC already has are still skipped).
+    final before = await _storage.read(key: _kBackupServer) ?? await _storage.read(key: _kServer);
+    if (before != null && before != a.server) await forgetBackup();
+    await _storage.write(key: _kBackupServer, value: a.server);
     final device = api?.server == a.server ? api?.deviceCookie : null;
-    api = Api(server: a.server, deviceCookie: device ?? await _storage.read(key: _kDevice), onSignedOut: _expired);
+    api = Api(server: a.server, deviceCookie: device ?? await _device(a.server), onSignedOut: _expired);
     serverVersion = data['version'] as String?;
     await _storage.write(key: _kServer, value: api!.server);
     notifyListeners();
@@ -108,7 +153,7 @@ class Session extends ChangeNotifier {
     user = User.fromJson(Map<String, dynamic>.from(data['user'] as Map));
     await _storage.write(key: _kToken, value: api!.token);
     await _storage.write(key: _kUser, value: _encodeUser(user!));
-    if (api!.deviceCookie != null) await _storage.write(key: _kDevice, value: api!.deviceCookie);
+    if (api!.deviceCookie != null) await _storage.write(key: _deviceKey(api!.server), value: api!.deviceCookie);
     notifyListeners();
   }
 

@@ -139,7 +139,7 @@ class GridScreenState extends State<GridScreen> {
         )
       else ...[
         IconButton(tooltip: 'Share', icon: const Icon(Icons.share_outlined), onPressed: () => _act((a, i) async {
-              await a.share(i);
+              await a.share(i, keep: m != GridMode.locked);
               return true;
             })),
         if (m != GridMode.locked)

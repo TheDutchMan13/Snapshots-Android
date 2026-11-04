@@ -99,6 +99,7 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
   }
 
   Future<void> _now() async {
+    await Backup.askToNotify();
     await Backup.now();
     if (mounted) showMessage(context, _s!.wifiOnly ? 'Backing up (as soon as the phone is on Wi-Fi)…' : 'Backing up…');
   }

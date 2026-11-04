@@ -3,9 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../backup/background.dart';
-import '../backup/backup_db.dart';
 import '../state/feed.dart';
 import '../state/session.dart';
+import 'actions.dart';
 import 'backup_screen.dart';
 import 'grid.dart';
 import 'media.dart';
@@ -65,6 +65,8 @@ class _MoreScreenState extends State<MoreScreen> {
         emptyText: 'Nothing in the locked folder. Move photos here from Snapshots on the PC.',
       ),
     ));
+    // Nothing from the locked folder stays on the phone, not even a copy made for sharing.
+    await AssetActions.clearShared();
     if (!mounted) return;
     try {
       await apiOf(context).post('/api/locked/close');
@@ -85,7 +87,7 @@ class _MoreScreenState extends State<MoreScreen> {
     if (!ok) return;
     await Backup.cancelAll();
     if (change) {
-      await (await BackupDb.open()).clear();
+      // The backup record is cleared when the next PC is connected (if it is another one).
       await session.changeServer();
     } else {
       await session.logout();

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -87,6 +88,16 @@ class Backup {
       existingWorkPolicy: ExistingWorkPolicy.keep,
       foregroundServiceConfig: _notification,
     );
+  }
+
+  /// On Android 13 and newer, asks once for permission to show the "Backing up" notification.
+  /// Backup works without it, just without the notification.
+  static Future<void> askToNotify() async {
+    try {
+      await const MethodChannel('snapshots/notifications').invokeMethod<void>('ask');
+    } catch (_) {
+      // Not on Android (tests).
+    }
   }
 
   /// The run notices this between files and finishes cleanly.
