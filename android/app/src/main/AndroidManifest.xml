@@ -13,13 +13,17 @@
     <!-- The "Backing up" notification while a long backup runs. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
-    <!-- Snapshots on the PC talks plain HTTP; over Tailscale the connection is encrypted anyway. -->
+    <!-- Snapshots on the PC talks plain HTTP; over Tailscale the connection is encrypted anyway
+         (the sign-in screen warns about other addresses).
+         No Android backup of the app's data: the sign-in and the backup record belong to this phone. -->
     <application
         android:label="Snapshots"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true"
-        android:requestLegacyExternalStorage="true">
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

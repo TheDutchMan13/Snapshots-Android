@@ -32,10 +32,20 @@ android {
 
     // Release builds are signed with the key in android/key.properties (written by the GitHub
     // workflow from the repository's secrets). Every build must use the same key, or Android
-    // refuses to install an update over the app. Without the file, the debug key is used.
+    // refuses to install an update over the app. Without the file a release build stops, unless
+    // SNAPSHOTS_DEBUG_SIGNING=1 asks for the debug key on purpose (a test APK that won't install
+    // over a real one; the workflow does this when the repository has no key).
     val keyFile = rootProject.file("key.properties")
     val keys = Properties()
     if (keyFile.exists()) keyFile.inputStream().use { keys.load(it) }
+    val debugSigning = System.getenv("SNAPSHOTS_DEBUG_SIGNING") == "1"
+    val releaseWanted = gradle.startParameter.taskNames.any { it.endsWith("Release") }
+    if (releaseWanted && !keyFile.exists() && !debugSigning) {
+        throw GradleException(
+            "No android/key.properties, so there is no key to sign the release build with. " +
+                "Create it (see README.md), or set SNAPSHOTS_DEBUG_SIGNING=1 for a test build signed with the debug key."
+        )
+    }
 
     signingConfigs {
         if (keyFile.exists()) {

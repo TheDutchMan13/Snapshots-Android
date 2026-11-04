@@ -38,7 +38,18 @@ flutter test
 flutter build apk --release
 ```
 
-The APK is in `build/app/outputs/flutter-apk/`. Release builds are signed with `android/upload-keystore.jks` as described in `android/key.properties`; neither is in git. Without them, the debug key is used.
+The APK is in `build/app/outputs/flutter-apk/`. Release builds are signed with `android/upload-keystore.jks` as described in `android/key.properties`; neither is in git:
+
+```
+storeFile=../upload-keystore.jks
+storePassword=…
+keyAlias=snapshots
+keyPassword=…
+```
+
+Without `key.properties` a release build stops with a message. For a test build signed with the debug key (it won't install over a real one), set `SNAPSHOTS_DEBUG_SIGNING=1`.
+
+Android only installs an update with a higher build number. The APKs from GitHub use the workflow's run number as build number, the version in `pubspec.yaml` stays as it is. So a local build won't install over an APK from GitHub (and needs the same key): pass a build number above the last run number, like `flutter build apk --release --build-number 500`, or uninstall the app first.
 
 ### Tests against a real server
 

@@ -51,6 +51,7 @@ jobs:
         run: |
           if [ -z "$KEYSTORE" ]; then
             echo "::warning::No signing key in the repository secrets. This APK is signed with a throwaway key and won't install over an earlier one."
+            echo "SNAPSHOTS_DEBUG_SIGNING=1" >> "$GITHUB_ENV"
             exit 0
           fi
           echo "$KEYSTORE" | base64 -d > android/upload-keystore.jks
