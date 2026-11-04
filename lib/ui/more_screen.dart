@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../backup/background.dart';
+import '../backup/backup_db.dart';
 import '../state/feed.dart';
 import '../state/session.dart';
 import 'actions.dart';
@@ -87,7 +88,9 @@ class _MoreScreenState extends State<MoreScreen> {
     if (!ok) return;
     await Backup.cancelAll();
     if (change) {
-      // The backup record is cleared when the next PC is connected (if it is another one).
+      // Chosen on purpose: the backup starts over even if the next PC has the same address (a rebuilt
+      // PC, a new library). Photos the PC already has are still skipped, by their checksum.
+      await (await BackupDb.open()).clear();
       await session.changeServer();
     } else {
       await session.logout();
