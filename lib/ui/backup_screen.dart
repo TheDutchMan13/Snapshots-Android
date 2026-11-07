@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:photo_manager/photo_manager.dart';
 
+import '../api/client.dart';
 import '../backup/background.dart';
 import '../backup/backup_db.dart';
 import '../backup/backup_service.dart';
 import '../backup/backup_state.dart';
+import '../backup/free_space.dart';
+import 'media.dart';
 import 'theme.dart';
 
 class BackupScreen extends StatefulWidget {
@@ -159,6 +162,13 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
             ),
           ),
         _statusCard(st),
+        if (access && _sent > 0)
+          ListTile(
+            leading: const Icon(Icons.cleaning_services_outlined),
+            title: const Text('Free up space'),
+            subtitle: const Text('Remove photos and videos from this phone that are safely in Snapshots'),
+            onTap: _freeSpace,
+          ),
         SwitchListTile(
           title: const Text('Back up automatically'),
           subtitle: const Text('About once an hour, in the background'),
@@ -236,6 +246,73 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
             ),
       ]),
     );
+  }
+
+  Future<void> _freeSpace() async {
+    final api = apiOf(context);
+    final busy = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const AlertDialog(content: Row(children: [
+        CircularProgressIndicator(),
+        SizedBox(width: 20),
+        Expanded(child: Text('Checking which ones are safely in Snapshots…')),
+      ])),
+    );
+    FreeSpace? found;
+    String? error;
+    try {
+      found = await FreeSpace.find(api);
+    } on ApiError catch (e) {
+      error = e.message;
+    } catch (e) {
+      error = "Couldn't check: $e";
+    }
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+    await busy;
+    if (!mounted) return;
+    if (found == null) {
+      showMessage(context, error ?? "Couldn't check.");
+      return;
+    }
+    if (found.items.isEmpty) {
+      showMessage(context, 'Nothing to remove: no photo on this phone is both backed up and unchanged since.');
+      return;
+    }
+    final old = found.olderThan(30);
+    final choice = await showModalBottomSheet<List<AssetEntity>>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Text('These stay in Snapshots on your PC, and you can still see them in this app. '
+                'Only the copies on this phone are removed. Android asks you to confirm.'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.history),
+            title: Text('Older than 30 days (${old.length})'),
+            enabled: old.isNotEmpty,
+            onTap: () => Navigator.pop(c, old),
+          ),
+          ListTile(
+            leading: const Icon(Icons.select_all),
+            title: Text('Everything backed up (${found!.items.length})'),
+            onTap: () => Navigator.pop(c, found!.items),
+          ),
+        ]),
+      ),
+    );
+    if (choice == null || choice.isEmpty || !mounted) return;
+    try {
+      final gone = await FreeSpace.remove(choice);
+      if (mounted) showMessage(context, gone == 0 ? 'Nothing was removed.' : 'Removed $gone from this phone. They\'re still in Snapshots.');
+    } catch (e) {
+      if (mounted) showMessage(context, "Couldn't remove them: $e");
+    }
+    _load();
   }
 
   Widget _statusCard(BackupStatus st) {

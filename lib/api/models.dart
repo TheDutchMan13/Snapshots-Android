@@ -31,6 +31,9 @@ class Asset {
         live = j['live'] == true,
         stackCount = _int(j['stack_count']) ?? 0,
         rating = _int(j['rating']) ?? 0,
+        label = (j['label'] as String?)?.isEmpty == true ? null : j['label'] as String?,
+        flag = _int(j['flag']) ?? 0,
+        edited = j['edited'] == true,
         v = (j['v'] as String?) ?? '',
         camera = j['camera'] as String?,
         place = j['place'] is Map ? Place.fromJson(Map<String, dynamic>.from(j['place'] as Map)) : null;
@@ -48,7 +51,14 @@ class Asset {
   bool archived;
   final bool live;
   final int stackCount;
-  final int rating;
+  int rating;
+
+  /// A colour label (red, yellow, green, blue or purple), as in Lightroom.
+  String? label;
+
+  /// 1 picked, -1 rejected, 0 neither.
+  int flag;
+  final bool edited;
   final String v;
   final String? camera;
   final Place? place;

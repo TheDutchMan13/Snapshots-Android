@@ -12,6 +12,9 @@ import '../api/models.dart';
 import '../state/feed.dart';
 import '../state/session.dart';
 import 'actions.dart';
+import 'comments.dart';
+import 'details.dart';
+import 'editor.dart';
 import 'grid.dart';
 import 'media.dart';
 import 'theme.dart';
@@ -154,6 +157,14 @@ class _ViewerState extends State<Viewer> {
             if (widget.mode == GridMode.library || widget.mode == GridMode.album)
               PopupMenuItem(value: 'archive', child: Text(a.archived ? 'Unarchive' : 'Archive')),
             if (widget.mode == GridMode.archive) const PopupMenuItem(value: 'unarchive', child: Text('Unarchive')),
+            if (_editable) ...[
+              const PopupMenuDivider(),
+              if (!a.isVideo) const PopupMenuItem(value: 'edit', child: Text('Edit')),
+              const PopupMenuItem(value: 'marks', child: Text('Stars and label')),
+              const PopupMenuItem(value: 'date', child: Text('Change date')),
+              const PopupMenuItem(value: 'place', child: Text('Change location')),
+              const PopupMenuItem(value: 'comments', child: Text('Comments')),
+            ],
           ],
           onSelected: (v) => switch (v) {
             'album' => _do((x, one) => x.addToAlbum(one)),
@@ -164,11 +175,32 @@ class _ViewerState extends State<Viewer> {
               }),
             'archive' => _do((x, one) => x.archive(one, !a.archived), removes: !a.archived && widget.mode == GridMode.library),
             'unarchive' => _do((x, one) => x.archive(one, false), removes: true),
+            'edit' => _edit(a),
+            'marks' => _do((x, one) => editMarks(context, one)),
+            'date' => _do((x, one) => changeDate(context, one)),
+            'place' => _do((x, one) => changePlace(context, one)),
+            'comments' => showComments(context, assetId: a.id),
             _ => null,
           },
         ),
       ],
     );
+  }
+
+  /// Not in the trash or the locked folder: there photos can't be edited, marked or commented on.
+  bool get _editable => widget.mode != GridMode.trash && widget.mode != GridMode.locked;
+
+  Future<void> _edit(Asset a) async {
+    final edited = await Navigator.of(context).push<Asset>(MaterialPageRoute(builder: (_) => EditorScreen(asset: a)));
+    if (edited == null || !mounted) return;
+    final i = feed.items.indexWhere((x) => x.id == a.id);
+    if (i >= 0) {
+      // The new version (v) makes the grid and the viewer load the edited picture.
+      edited.favorite = a.favorite;
+      feed.items[i] = edited;
+      feed.changed();
+    }
+    showMessage(context, edited.edited ? 'Saved. Your original file is unchanged.' : 'Back to the original.');
   }
 
   Widget _bottomBar(Asset a) {
@@ -209,7 +241,7 @@ class _ViewerState extends State<Viewer> {
         expand: false,
         initialChildSize: .55,
         maxChildSize: .92,
-        builder: (c, scroll) => InfoSheet(asset: a, scroll: scroll, cache: _cache),
+        builder: (c, scroll) => InfoSheet(asset: a, scroll: scroll, cache: _cache, editable: _editable),
       ),
     );
   }
@@ -433,10 +465,13 @@ class _Controls extends StatelessWidget {
 
 /// Details about one photo: date, place, camera, people, albums…
 class InfoSheet extends StatefulWidget {
-  const InfoSheet({super.key, required this.asset, required this.scroll, this.cache = true});
+  const InfoSheet({super.key, required this.asset, required this.scroll, this.cache = true, this.editable = false});
 
   final Asset asset;
   final ScrollController scroll;
+
+  /// Offer to change the date, place, description and marks, and to read and write comments.
+  final bool editable;
 
   /// False in the locked folder: nothing from it is kept on the phone.
   final bool cache;
@@ -481,14 +516,49 @@ class _InfoSheetState extends State<InfoSheet> {
           title: Text(title),
           subtitle: sub == null ? null : Text(sub),
         );
+    final edit = widget.editable && d != null;
+    Widget tap(IconData icon, String title, String? sub, VoidCallback? onTap, {IconData trailing = Icons.edit_outlined}) => ListTile(
+          dense: true,
+          leading: Icon(icon),
+          title: Text(title),
+          subtitle: sub == null ? null : Text(sub),
+          trailing: onTap == null ? null : Icon(trailing, size: 18),
+          onTap: onTap,
+        );
+    Future<void> then(Future<bool> job) async {
+      if (await job && mounted) _load();
+    }
+
+    final marks = [
+      if (a.rating > 0) a.rating == 1 ? '1 star' : '${a.rating} stars',
+      if (a.label != null) labelName(a.label!),
+      if (a.flag == 1) 'Picked',
+      if (a.flag == -1) 'Rejected',
+    ];
+    final place = a.place != null && a.place!.label.isNotEmpty ? a.place!.label : (d?.position != null ? 'On the map' : null);
     return ListView(controller: widget.scroll, padding: const EdgeInsets.only(bottom: 24), children: [
-      row(Icons.event, DateFormat.yMMMMEEEEd().add_jm().format(a.takenAt)),
+      tap(Icons.event, DateFormat.yMMMMEEEEd().add_jm().format(a.takenAt), null,
+          edit ? () => then(changeDate(context, [widget.asset])) : null),
       row(a.isVideo ? Icons.movie_outlined : Icons.image_outlined, a.filename,
-          [if (a.width != null && a.height != null) '${a.width} × ${a.height}', _size(a.size)].join(' · ')),
+          [if (a.width != null && a.height != null) '${a.width} × ${a.height}', _size(a.size), if (a.edited) 'edited'].join(' · ')),
       if (a.camera != null) row(Icons.photo_camera_outlined, a.camera!),
-      if (a.place != null && a.place!.label.isNotEmpty) row(Icons.place_outlined, a.place!.label),
+      if (place != null || edit)
+        tap(Icons.place_outlined, place ?? 'No location', null, edit ? () => then(changePlace(context, [widget.asset])) : null),
       if (d?.folder != null) row(Icons.folder_outlined, d!.folder!.isEmpty ? 'Library folder' : d.folder!),
-      if (d?.description != null && d!.description!.isNotEmpty) row(Icons.notes, d.description!),
+      if (edit)
+        tap(Icons.notes, (d.description ?? '').isEmpty ? 'Add a description' : d.description!, null,
+            () => then(changeDescription(context, widget.asset, d.description)))
+      else if (d?.description != null && d!.description!.isNotEmpty)
+        row(Icons.notes, d.description!),
+      if (edit || marks.isNotEmpty)
+        tap(Icons.star_outline, marks.isEmpty ? 'No stars or label' : marks.join(' · '), null,
+            edit ? () => then(editMarks(context, [widget.asset])) : null),
+      if (edit)
+        tap(Icons.chat_bubble_outline, d.comments == 0 ? 'Comments' : d.comments == 1 ? '1 comment' : '${d.comments} comments', null,
+            () async {
+          await showComments(context, assetId: a.id);
+          if (mounted) _load();
+        }, trailing: Icons.chevron_right),
       if (_error != null) Padding(padding: const EdgeInsets.all(16), child: Text(_error!)),
       if (d == null && _error == null) const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator())),
       if (d != null && d.people.isNotEmpty) ...[

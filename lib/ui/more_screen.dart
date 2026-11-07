@@ -8,11 +8,13 @@ import '../state/feed.dart';
 import '../state/session.dart';
 import 'actions.dart';
 import 'backup_screen.dart';
+import 'browse_screens.dart';
+import 'comments.dart';
 import 'grid.dart';
 import 'media.dart';
 import 'theme.dart';
 
-const appVersion = '0.1.0';
+const appVersion = '0.2.0';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});
@@ -113,6 +115,47 @@ class _MoreScreenState extends State<MoreScreen> {
             title: const Text('Backup'),
             subtitle: const Text('Send this phone\'s photos and videos to Snapshots'),
             onTap: () => _push(const BackupScreen()),
+          ),
+          const Divider(),
+          ListTile(
+            leading: Badge(
+              isLabelVisible: (s?['activity_unread'] as int? ?? 0) > 0,
+              label: Text('${s?['activity_unread'] ?? ''}'),
+              child: const Icon(Icons.notifications_none),
+            ),
+            title: const Text('Activity'),
+            subtitle: const Text('Comments, and photos others added to albums'),
+            onTap: () async {
+              await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ActivityScreen()));
+              _load();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.auto_awesome_outlined),
+            title: const Text('Highlights'),
+            subtitle: const Text('Your best-looking photos'),
+            onTap: () => openHighlights(context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.calendar_month_outlined),
+            title: const Text('Calendar'),
+            onTap: () => _push(const CalendarScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.event_outlined),
+            title: const Text('Events'),
+            subtitle: const Text('Days out and trips'),
+            onTap: () => _push(const EventsScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.emoji_events_outlined),
+            title: const Text('Year in review'),
+            onTap: () => _push(const ReviewScreen()),
+          ),
+          ListTile(
+            leading: const Icon(Icons.pets),
+            title: const Text('Pets'),
+            onTap: () => _push(const PetsScreen()),
           ),
           const Divider(),
           ListTile(

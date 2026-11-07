@@ -72,6 +72,21 @@ class BackupDb {
     return [for (final r in rows) (name: (r['name'] as String?) ?? '', reason: (r['reason'] as String?) ?? '')];
   }
 
+  /// Everything sent to (or found on) Snapshots, with the checksum it had then: what "free up space" may remove.
+  Future<List<({String localId, int modified, String sha1})>> sent() async {
+    final rows = await _db.query('items', columns: ['local_id', 'modified', 'sha1'], where: "status = 'sent' AND sha1 IS NOT NULL");
+    return [for (final r in rows) (localId: r['local_id'] as String, modified: r['modified'] as int, sha1: r['sha1'] as String)];
+  }
+
+  /// Removed from the phone by "free up space": not offered again.
+  Future<void> markFreed(List<String> localIds) async {
+    final batch = _db.batch();
+    for (final id in localIds) {
+      batch.update('items', {'status': 'freed'}, where: 'local_id = ?', whereArgs: [id]);
+    }
+    await batch.commit(noResult: true);
+  }
+
   /// Forget everything (after switching to another server, everything is checked again).
   Future<void> clear() => _db.delete('items');
 

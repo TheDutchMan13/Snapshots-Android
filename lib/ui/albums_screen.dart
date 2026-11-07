@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 import '../api/client.dart';
 import '../api/models.dart';
 import '../state/feed.dart';
+import 'comments.dart';
 import 'grid.dart';
 import 'media.dart';
+import 'smart_album.dart';
 import 'theme.dart';
 
 /// Albums are shared by everyone who uses the Snapshots PC.
@@ -51,6 +53,13 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     }
   }
 
+  Future<void> _createSmart() async {
+    final made = await Navigator.of(context).push<Album>(MaterialPageRoute(builder: (_) => const SmartAlbumScreen()));
+    if (made == null || !mounted) return;
+    await _load();
+    if (mounted) _open(made);
+  }
+
   Future<void> _open(Album a) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AlbumScreen(album: a)));
     _load();
@@ -61,7 +70,18 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     final albums = _albums;
     return Scaffold(
       appBar: AppBar(title: const Text('Albums'), actions: [
-        IconButton(tooltip: 'New album', icon: const Icon(Icons.add), onPressed: _create),
+        PopupMenuButton<String>(
+          tooltip: 'New album',
+          icon: const Icon(Icons.add),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: 'album', child: ListTile(leading: Icon(Icons.photo_album_outlined), title: Text('New album'))),
+            PopupMenuItem(
+              value: 'smart',
+              child: ListTile(leading: Icon(Icons.auto_awesome_motion_outlined), title: Text('New smart album'), subtitle: Text('Fills itself from rules')),
+            ),
+          ],
+          onSelected: (v) => v == 'smart' ? _createSmart() : _create(),
+        ),
       ]),
       body: RefreshIndicator(
         onRefresh: _load,
@@ -188,6 +208,7 @@ class _AlbumScreenState extends State<AlbumScreen> {
       feed: _feed,
       mode: a.smart ? GridMode.library : GridMode.album,
       albumId: a.id,
+      filterable: true,
       emptyText: a.smart ? 'Nothing matches this smart album yet.' : 'This album is empty. Select photos anywhere and choose "Add to album".',
       header: range == null && a.ruleText == null
           ? null
@@ -196,14 +217,10 @@ class _AlbumScreenState extends State<AlbumScreen> {
               child: Text([?range, if (a.smart && a.ruleText != null) a.ruleText!].join(' · '),
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
-      actions: [
-        PopupMenuButton<String>(
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'rename', child: Text('Rename')),
-            PopupMenuItem(value: 'delete', child: Text('Delete album')),
-          ],
-          onSelected: (v) => v == 'rename' ? _rename() : _delete(),
-        ),
+      menu: [
+        ('Comments', () => showComments(context, albumId: _album.id)),
+        ('Rename', _rename),
+        ('Delete album', _delete),
       ],
     );
   }

@@ -8,7 +8,10 @@ import '../api/models.dart';
 import '../state/feed.dart';
 import '../state/session.dart';
 import 'actions.dart';
+import 'details.dart';
+import 'filter_sheet.dart';
 import 'media.dart';
+import 'slideshow.dart';
 import 'viewer.dart';
 
 /// What the selection bar offers: it depends on where the photos are.
@@ -28,6 +31,9 @@ class GridScreen extends StatefulWidget {
     this.emptyText = 'Nothing here yet.',
     this.showAppBar = true,
     this.ownsFeed = true,
+    this.filterable = false,
+    this.slideshow = true,
+    this.menu = const [],
   });
 
   final String title;
@@ -44,6 +50,15 @@ class GridScreen extends StatefulWidget {
 
   /// Dispose the feed with the screen.
   final bool ownsFeed;
+
+  /// A Filter button (stars, size, camera…) in the bar.
+  final bool filterable;
+
+  /// "Slideshow" in the bar's menu.
+  final bool slideshow;
+
+  /// More entries for that menu (an album's Rename, Delete…): a label and what it does.
+  final List<(String, VoidCallback)> menu;
 
   @override
   State<GridScreen> createState() => GridScreenState();
@@ -108,12 +123,14 @@ class GridScreenState extends State<GridScreen> {
 
   List<Asset> get _picked => [for (final a in feed.items) if (selected.contains(a.id)) a];
 
-  Future<void> _act(Future<bool> Function(AssetActions a, List<Asset> items) job, {bool removes = false}) async {
+  Future<void> _act(Future<bool> Function(AssetActions a, List<Asset> items) job, {bool removes = false, bool refresh = false}) async {
     final items = _picked;
     final ok = await job(AssetActions(context), items);
     if (!mounted) return;
     if (ok && removes) feed.remove(items.map((a) => a.id));
     setState(() => selected.clear());
+    // A new date moves photos in the timeline: show it again from the top.
+    if (ok && refresh) feed.refresh();
   }
 
   List<Widget> _selectionActions() {
@@ -125,6 +142,11 @@ class GridScreenState extends State<GridScreen> {
       if (m != GridMode.trash && m != GridMode.locked) const PopupMenuItem(value: 'album', child: Text('Add to album')),
       if (m == GridMode.album) const PopupMenuItem(value: 'unalbum', child: Text('Remove from album')),
       if (m != GridMode.trash && m != GridMode.locked) const PopupMenuItem(value: 'save', child: Text('Save to phone')),
+      if (m != GridMode.trash && m != GridMode.locked) ...const [
+        PopupMenuItem(value: 'marks', child: Text('Stars and label')),
+        PopupMenuItem(value: 'date', child: Text('Change date')),
+        PopupMenuItem(value: 'place', child: Text('Change location')),
+      ],
       if (m == GridMode.library || m == GridMode.album) const PopupMenuItem(value: 'archive', child: Text('Archive')),
       if (m == GridMode.archive) const PopupMenuItem(value: 'unarchive', child: Text('Unarchive')),
       if (m != GridMode.trash && m != GridMode.locked) const PopupMenuItem(value: 'trash', child: Text('Move to trash')),
@@ -159,6 +181,9 @@ class GridScreenState extends State<GridScreen> {
                 await a.saveToPhone(i);
                 return true;
               }),
+            'marks' => _act((a, i) => editMarks(context, i)),
+            'date' => _act((a, i) => changeDate(context, i), refresh: true),
+            'place' => _act((a, i) => changePlace(context, i), refresh: true),
             'archive' => _act((a, i) => a.archive(i, true), removes: true),
             'unarchive' => _act((a, i) => a.archive(i, false), removes: true),
             'trash' => _act((a, i) => a.trash(i), removes: true),
@@ -185,7 +210,25 @@ class GridScreenState extends State<GridScreen> {
       );
     }
     if (!widget.showAppBar) return null;
-    return AppBar(title: Text(widget.title), actions: widget.actions);
+    return AppBar(title: Text(widget.title), actions: [
+      if (widget.filterable) FilterButton(feed: feed),
+      ...widget.actions,
+      if (widget.slideshow || widget.menu.isNotEmpty)
+        PopupMenuButton<VoidCallback>(
+          itemBuilder: (_) => [
+            if (widget.slideshow) PopupMenuItem(value: openSlideshow, child: const Text('Slideshow')),
+            for (final (label, run) in widget.menu) PopupMenuItem(value: run, child: Text(label)),
+          ],
+          onSelected: (run) => run(),
+        ),
+    ]);
+  }
+
+  void openSlideshow() {
+    if (feed.items.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => Slideshow(feed: feed, cache: widget.mode != GridMode.locked),
+    ));
   }
 
   @override
@@ -362,8 +405,15 @@ class AssetGridView extends StatelessWidget {
         ),
         if (a.isVideo)
           const Positioned(right: 4, top: 4, child: Icon(Icons.play_circle_fill, color: Colors.white, size: 20, shadows: [Shadow(blurRadius: 4)])),
-        if (a.favorite)
-          const Positioned(left: 4, bottom: 4, child: Icon(Icons.favorite, color: Colors.white, size: 16, shadows: [Shadow(blurRadius: 4)])),
+        Positioned(
+          left: 4,
+          bottom: 4,
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            if (a.favorite) const Icon(Icons.favorite, color: Colors.white, size: 16, shadows: [Shadow(blurRadius: 4)]),
+            if (a.favorite) const SizedBox(width: 3),
+            MarksBadge(asset: a),
+          ]),
+        ),
         if (a.stackCount > 1)
           const Positioned(right: 4, bottom: 4, child: Icon(Icons.layers, color: Colors.white, size: 16, shadows: [Shadow(blurRadius: 4)])),
         if (selecting)
@@ -387,7 +437,7 @@ class _Row {
 
 /// Opens a grid screen for a filter.
 void openGrid(BuildContext context, String title, Map<String, dynamic> query,
-    {GridMode mode = GridMode.library, int? albumId, List<Widget> actions = const [], String? empty}) {
+    {GridMode mode = GridMode.library, int? albumId, List<Widget> actions = const [], String? empty, bool filterable = true}) {
   Navigator.of(context).push(MaterialPageRoute(
     builder: (c) => GridScreen(
       title: title,
@@ -396,6 +446,7 @@ void openGrid(BuildContext context, String title, Map<String, dynamic> query,
       albumId: albumId,
       actions: actions,
       emptyText: empty ?? 'Nothing here yet.',
+      filterable: filterable,
     ),
   ));
 }

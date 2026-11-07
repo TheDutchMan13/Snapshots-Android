@@ -5,7 +5,18 @@ import '../api/models.dart';
 
 /// One grid of photos (the timeline, an album, a person, a search…), loaded a page at a time.
 class Feed extends ChangeNotifier {
-  Feed(this.api, this.query, {this.pageSize = 120});
+  Feed(this.api, this.query, {this.pageSize = 120}) : _load = null;
+
+  /// A grid whose items come all at once from elsewhere (Year in review, one photo from Activity).
+  Feed.fixed(this.api, Future<List<Asset>> Function() load)
+      : query = const {},
+        pageSize = 0,
+        _load = load;
+
+  final Future<List<Asset>> Function()? _load;
+
+  /// The Filter menu's choices, added to [query] (stars, size, camera…). See [setFilter].
+  Map<String, dynamic> filter = const {};
 
   final Api api;
 
@@ -33,8 +44,16 @@ class Feed extends ChangeNotifier {
     final gen = _gen;
     notifyListeners();
     try {
+      if (_load != null) {
+        final got = await _load();
+        if (_disposed || gen != _gen) return;
+        items.addAll(got);
+        done = true;
+        return;
+      }
       final data = await api.get('/api/assets', query: {
         ...query,
+        ...filter,
         'limit': pageSize,
         if (_next != null) 'cursor': _next,
       });
@@ -82,6 +101,12 @@ class Feed extends ChangeNotifier {
     error = null;
     notifyListeners();
     await loadMore();
+  }
+
+  /// Show only what the Filter menu asks for, from the top.
+  Future<void> setFilter(Map<String, dynamic> f) {
+    filter = f;
+    return refresh();
   }
 
   void remove(Iterable<int> ids) {

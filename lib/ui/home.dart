@@ -115,6 +115,7 @@ class _HomeState extends State<Home> {
           feed: _timeline,
           months: true,
           ownsFeed: false,
+          filterable: true,
           header: _jumped == null
               ? const _Memories()
               : Padding(
