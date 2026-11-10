@@ -56,6 +56,7 @@ void main() {
     late int forgotten;
     setUp(() {
       HttpOverrides.global = null; // real sockets, to 127.0.0.1 only
+      diskImageCache = false;
       forgotten = 0;
       Session.forgetBackup = () async => forgotten++;
     });

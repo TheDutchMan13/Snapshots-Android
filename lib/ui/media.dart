@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../api/client.dart';
+import '../state/image_cache.dart';
 import '../state/session.dart';
 
 /// Off in tests, which have no disk cache.
-bool diskImageCache = true;
+bool get diskImageCache => ImageStore.enabled;
+set diskImageCache(bool on) => ImageStore.enabled = on;
 
 Api apiOf(BuildContext context, {bool listen = false}) =>
     (listen ? context.watch<Session>() : context.read<Session>()).api!;
@@ -15,7 +17,8 @@ Api apiOf(BuildContext context, {bool listen = false}) =>
 /// so the cache key changes when the photo does.
 ImageProvider serverImage(Api api, String path, {bool cache = true}) {
   if (!cache || !diskImageCache) return NetworkImage(api.url(path), headers: api.authHeaders);
-  return CachedNetworkImageProvider(api.url(path), headers: api.authHeaders, cacheKey: '${api.server}$path');
+  return CachedNetworkImageProvider(api.url(path), headers: api.authHeaders, cacheKey: '${api.server}$path',
+      cacheManager: ImageStore.manager);
 }
 
 class ServerThumb extends StatelessWidget {

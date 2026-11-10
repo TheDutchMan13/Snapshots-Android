@@ -138,7 +138,10 @@ class _PersonTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Column(children: [
-        AspectRatio(aspectRatio: 1, child: ClipOval(child: ServerThumb(person.facePath, icon: Icons.person_outline))),
+        // The picture takes what the two lines of text leave, so large text sizes can't overflow the tile.
+        Expanded(
+          child: Center(child: AspectRatio(aspectRatio: 1, child: ClipOval(child: ServerThumb(person.facePath, icon: Icons.person_outline)))),
+        ),
         const SizedBox(height: 6),
         Text(person.named ? person.name! : 'Add a name',
             maxLines: 1,

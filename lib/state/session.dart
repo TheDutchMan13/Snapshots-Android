@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../api/client.dart';
 import '../backup/background.dart';
 import '../backup/backup_db.dart';
+import 'image_cache.dart';
 
 class User {
   User({required this.id, required this.username, required this.isAdmin});
@@ -125,7 +126,10 @@ class Session extends ChangeNotifier {
     // Another PC than the one the phone backed up to: what was sent there says nothing about
     // this one, so the backup starts over (photos the PC already has are still skipped).
     final before = await _storage.read(key: _kBackupServer) ?? await _storage.read(key: _kServer);
-    if (before != null && before != a.server) await forgetBackup();
+    if (before != null && before != a.server) {
+      await forgetBackup();
+      await ImageStore.clear(); // another PC, another library: no pictures of the old one stay behind
+    }
     await _storage.write(key: _kBackupServer, value: a.server);
     final device = api?.server == a.server ? api?.deviceCookie : null;
     api = Api(server: a.server, deviceCookie: device ?? await _device(a.server), onSignedOut: _expired);
@@ -163,6 +167,7 @@ class Session extends ChangeNotifier {
     } catch (_) {
       // Signed out here either way.
     }
+    await ImageStore.clear();
     await _forget();
   }
 
@@ -171,6 +176,7 @@ class Session extends ChangeNotifier {
     try {
       await api?.post('/api/auth/logout');
     } catch (_) {}
+    await ImageStore.clear();
     for (final k in [_kToken, _kUser, _kServer]) {
       await _storage.delete(key: k);
     }

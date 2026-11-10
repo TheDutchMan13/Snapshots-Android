@@ -10,6 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   cached_network_image: ^4.0.6
+  flutter_cache_manager: ^3.4.1
   connectivity_plus: ^7.3.2
   crypto: ^3.0.8
   dio: ^5.11.1

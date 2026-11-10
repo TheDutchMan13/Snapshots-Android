@@ -78,7 +78,9 @@ void main() {
     await tester.tap(find.text('Albums'));
     await settle(tester);
     await shot(tester, '03-albums');
-    await tester.tap(find.text('Arizona trip'));
+    // Whatever album the server has first: the test no longer depends on a particular demo album.
+    final albums = await tester.runAsync(() => session.api!.get('/api/albums'));
+    await tester.tap(find.text((albums['albums'] as List).first['name'] as String));
     await settle(tester);
     await shot(tester, '04-album');
     await tester.pageBack();
