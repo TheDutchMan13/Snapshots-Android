@@ -44,7 +44,24 @@ class BackupSettings {
     }
   }
 
-  Future<void> save() => SharedPreferencesAsync().setString(
+  /// When the phone's photos were last looked through (the hourly run only looks at what changed
+  /// since), and last looked through in full. Forgotten when what is backed up changes, so the next
+  /// run looks through everything.
+  static const listedKey = 'backup.listed';
+  static const fullListKey = 'backup.listed.full';
+
+  static Future<void> forgetListing() async {
+    final prefs = SharedPreferencesAsync();
+    await prefs.remove(listedKey);
+    await prefs.remove(fullListKey);
+  }
+
+  Future<void> save() async {
+    await forgetListing(); // other folders or videos on or off: look through everything next time
+    await _write();
+  }
+
+  Future<void> _write() => SharedPreferencesAsync().setString(
         _key,
         jsonEncode({
           'enabled': enabled,

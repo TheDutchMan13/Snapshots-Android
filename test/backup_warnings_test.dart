@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:snapshots_app/backup/backup_service.dart';
 import 'package:snapshots_app/backup/backup_state.dart';
 import 'package:snapshots_app/state/session.dart';
 
@@ -43,5 +44,36 @@ void main() {
       final readme = File('README.md').readAsStringSync();
       expect(readme, contains('Snapshots ${Session.minServerVersion} or newer'));
     });
+  });
+
+  group('the hourly run looks only at what changed', () {
+    final now = DateTime(2026, 11, 10, 12).millisecondsSinceEpoch;
+    int hoursAgo(int h) => now - Duration(hours: h).inMilliseconds;
+    DateTime? since({bool background = true, int? listed, int? full, int? at}) => BackupRun.quickListSince(
+        background: background, lastListed: listed ?? hoursAgo(1), lastFull: full ?? hoursAgo(5), now: at ?? now);
+
+    test('only the automatic run, only after a full listing in the last day', () {
+      expect(since(), isNotNull);
+      expect(since(background: false), isNull); // "Back up now" always looks through everything
+      expect(since(full: 0), isNull);            // never looked through in full
+      expect(since(listed: 0), isNull);
+      expect(since(full: hoursAgo(24)), isNull); // a day: time for a full one
+      expect(since(full: hoursAgo(23)), isNotNull);
+    });
+
+    test('starts before the last listing, so nothing in between is missed', () {
+      final t = since(listed: hoursAgo(2))!;
+      expect(t.millisecondsSinceEpoch, hoursAgo(2) - BackupRun.listOverlap.inMilliseconds);
+    });
+
+    test('a clock that went backwards means a full listing', () {
+      expect(since(listed: now + 1000), isNull);
+      expect(since(full: now + 1000), isNull);
+    });
+  });
+
+  test('changing what is backed up makes the next run look through everything', () {
+    expect(BackupSettings.listedKey, 'backup.listed');
+    expect(BackupSettings.fullListKey, 'backup.listed.full');
   });
 }

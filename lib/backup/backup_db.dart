@@ -1,6 +1,8 @@
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 
+import 'backup_state.dart';
+
 /// What the phone has already sent to Snapshots, so it isn't read and hashed again.
 ///
 /// One row per photo or video on the phone (its MediaStore id). [modified] is the file's
@@ -101,7 +103,10 @@ class BackupDb {
   }
 
   /// Forget everything (after switching to another server, everything is checked again).
-  Future<void> clear() => _db.delete('items');
+  Future<void> clear() async {
+    await _db.delete('items');
+    await BackupSettings.forgetListing(); // nothing is known any more: the next run looks through everything
+  }
 
   /// Forget the files that were turned away, so they are tried again.
   Future<void> retryRejected() => _db.delete('items', where: "status = 'rejected'");

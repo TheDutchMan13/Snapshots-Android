@@ -53,6 +53,24 @@ class BackupRun {
   /// ("Back up now" always asks).
   static const recheckEvery = Duration(hours: 24);
   static const _recheckKey = 'backup.rechecked';
+  static const _listedKey = BackupSettings.listedKey;
+  static const _fullListKey = BackupSettings.fullListKey;
+
+  /// The automatic hourly run only looks at photos changed since the last listing; this often it
+  /// looks through everything (a changed date can be missed, a photo restored from a backup).
+  static const fullListEvery = Duration(hours: 24);
+
+  /// A listing starts a little before the last one ended, so nothing in between is missed.
+  static const listOverlap = Duration(hours: 6);
+
+  /// Is this run allowed to look only at what changed? Only the automatic one, and not on its first
+  /// run of the day. Pure, so a test can check it.
+  static DateTime? quickListSince({required bool background, required int lastListed, required int lastFull, required int now}) {
+    if (!background || lastListed <= 0 || lastFull <= 0) return null;
+    if (now < lastFull || now - lastFull >= fullListEvery.inMilliseconds) return null;
+    if (now < lastListed) return null;
+    return DateTime.fromMillisecondsSinceEpoch(lastListed).subtract(listOverlap);
+  }
 
   /// 4xx answers that say "not now", not "not this file": the run stops and the file is tried again.
   static const temporaryStatus = {401, 408, 409, 423, 425, 429};
@@ -147,14 +165,39 @@ class BackupRun {
     await recheckSent(force: !background);
     await _beat('Looking for new photos', force: true);
     List<PhoneItem> items;
+    final prefs = SharedPreferencesAsync();
+    final startedAt = DateTime.now().millisecondsSinceEpoch;
+    final since = quickListSince(
+      background: background,
+      lastListed: await prefs.getInt(_listedKey) ?? 0,
+      lastFull: await prefs.getInt(_fullListKey) ?? 0,
+      now: startedAt,
+    );
     try {
-      items = [for (final a in await _choose(settings)) GalleryItem(a)];
+      items = [for (final a in await _choose(settings, since: since)) GalleryItem(a)];
+      if (since != null) {
+        // Photos that were looked at before but still wait (couldn't be read, couldn't be saved) are
+        // tried again too, even though they haven't changed.
+        final have = {for (final i in items) i.id};
+        for (final e in (await _db.known()).entries) {
+          if (e.value.status == 'hashed' && !have.contains(e.key)) {
+            final a = await AssetEntity.fromId(e.key);
+            if (a != null) items.add(GalleryItem(a));
+          }
+        }
+      }
     } on PlatformException {
       return _noAccess;
     } on StateError catch (e) {
       return e.message;
     }
-    return sendAll(items);
+    final result = await sendAll(items);
+    if (!await _stopped()) {
+      // Only a run that got through counts as "looked through": otherwise the next one starts again.
+      await prefs.setInt(_listedKey, startedAt);
+      if (since == null) await prefs.setInt(_fullListKey, startedAt);
+    }
+    return result;
   }
 
   /// Does Snapshots still have what this phone sent? Whatever it lost (the file is gone from the PC)
@@ -221,9 +264,17 @@ class BackupRun {
   }
 
   /// The photos and videos in the chosen albums, newest first, without repeats.
-  Future<List<AssetEntity>> _choose(BackupSettings s) async {
+  ///
+  /// With [since], only photos changed after that moment (Android's "date modified").
+  Future<List<AssetEntity>> _choose(BackupSettings s, {DateTime? since}) async {
     final type = s.videos ? RequestType.common : RequestType.image;
-    final paths = await PhotoManager.getAssetPathList(type: type, hasAll: true);
+    final paths = await PhotoManager.getAssetPathList(
+      type: type,
+      hasAll: true,
+      filterOption: since == null
+          ? null
+          : FilterOptionGroup(updateTimeCond: DateTimeCond(min: since, max: DateTime.now().add(const Duration(days: 1)))),
+    );
     List<AssetPathEntity> chosen;
     if (s.allAlbums) {
       chosen = paths.where((p) => p.isAll).toList();
