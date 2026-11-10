@@ -32,6 +32,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.9'   # the version the app is tested with; raise it on purpose, not by accident
           cache: true
 
       - name: Install dependencies
@@ -49,6 +50,10 @@ jobs:
           PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
+          if [ -z "$KEYSTORE" ] && [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "::error::No signing key in the repository secrets. A release APK signed with a throwaway key would not install over the last one, so this build stops here. Add the three ANDROID_KEY* secrets (see the top of this file) and run it again."
+            exit 1
+          fi
           if [ -z "$KEYSTORE" ]; then
             echo "::warning::No signing key in the repository secrets. This APK is signed with a throwaway key and won't install over an earlier one."
             echo "SNAPSHOTS_DEBUG_SIGNING=1" >> "$GITHUB_ENV"
