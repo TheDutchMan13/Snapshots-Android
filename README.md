@@ -25,7 +25,7 @@ The phone app for [Snapshots](https://github.com/TheDutchMan13/Snapshots), the s
 
 1. Open the [Releases page](https://github.com/TheDutchMan13/Snapshots-Android/releases) on the phone and download `Snapshots.apk`. (Builds of every change are on the Actions tab, under each run's Artifacts.)
 2. Open it. Android asks to allow installing apps from your browser once; allow it.
-3. Open Snapshots, type your PC's Tailscale address and the port Snapshots uses (for example `100.101.102.103:8000` or `mypc.tail1234.ts.net:8000`), and sign in.
+3. Open Snapshots, type your PC's Tailscale address and the port Snapshots uses (Snapshots uses port `8080` unless you changed it, for example `100.101.102.103:8080`; with Tailscale Serve the name alone works, `mypc.tail1234.ts.net`), and sign in.
 4. Go to **More > Backup**, allow access to your photos, and turn on **Back up automatically**.
 
 New versions install over the old one; your sign-in and backup history are kept.

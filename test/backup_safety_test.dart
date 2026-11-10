@@ -404,6 +404,18 @@ void main() {
       }
     });
 
+    test('the run knows how many photos are still waiting', () async {
+      final a = photo('w1'), b = photo('w2');
+      final stopped = run();
+      expect(stopped.waiting, isNull); // before it looked
+      pc.uploadAnswers.add(408);
+      await expectLater(stopped.sendAll([a, b]), throwsA(isA<ApiError>()));
+      expect(stopped.waiting, 2);
+      final next = run();
+      await next.sendAll([a, b]);
+      expect(next.waiting, 0);
+    });
+
     test('when the PC could not save a file, it is tried again next time', () async {
       final a = photo('a'), b = photo('b');
       pc.uploadAnswers.add({'name': 'a.jpg', 'status': 'rejected', 'reason': 'Upload failed: [Errno 28] No space left'});

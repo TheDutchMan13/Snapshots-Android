@@ -144,8 +144,9 @@ class _LoginScreenState extends State<LoginScreen> {
           Text("Your Snapshots PC's address", style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 6),
           const Text(
-            "Use the PC's Tailscale name or address and the port Snapshots runs on, like "
-            'mypc.tail1234.ts.net:8000 or 100.101.102.103:8000. Snapshots shows it in Settings on the PC.',
+            "Use the PC's Tailscale name or address. Snapshots runs on port 8080 unless you changed it, so "
+            'it looks like 100.101.102.103:8080. With Tailscale Serve (see the Snapshots README) the name alone '
+            'works: mypc.tail1234.ts.net',
           ),
           const SizedBox(height: 16),
           TextField(
@@ -153,7 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
             keyboardType: TextInputType.url,
             autocorrect: false,
             textInputAction: TextInputAction.go,
-            decoration: const InputDecoration(labelText: 'Address', hintText: '100.101.102.103:8000'),
+            decoration: const InputDecoration(labelText: 'Address', hintText: '100.101.102.103:8080'),
             onChanged: (_) => setState(() {}),
             onSubmitted: (_) => _connect(),
           ),

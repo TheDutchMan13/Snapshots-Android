@@ -53,7 +53,7 @@ class Api {
 
   late final Dio dio;
 
-  /// "100.64.1.2:8000" or "pc.tail1234.ts.net" -> "http://100.64.1.2:8000".
+  /// "100.64.1.2:8080" or "pc.tail1234.ts.net" -> "http://100.64.1.2:8080".
   static String normalizeServer(String input) {
     var s = input.trim();
     while (s.endsWith('/')) {

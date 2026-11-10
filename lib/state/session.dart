@@ -56,6 +56,41 @@ class Session extends ChangeNotifier {
   String? serverVersion;
   bool loaded = false;
 
+  /// The oldest Snapshots this app is made for (the README says the same; a test keeps them equal).
+  static const minServerVersion = '0.14.7';
+
+  /// Is [version] (like "0.14.7") at least [minimum]? Anything that isn't dotted numbers counts as unknown: true.
+  static bool versionAtLeast(String? version, [String minimum = minServerVersion]) {
+    List<int>? parse(String? v) {
+      final parts = (v ?? '').trim().split('.');
+      final nums = [for (final p in parts) int.tryParse(p)];
+      return parts.isEmpty || nums.contains(null) ? null : nums.cast<int>();
+    }
+
+    final a = parse(version), b = parse(minimum);
+    if (a == null || b == null) return true;
+    for (var i = 0; i < 3; i++) {
+      final x = i < a.length ? a[i] : 0, y = i < b.length ? b[i] : 0;
+      if (x != y) return x > y;
+    }
+    return true;
+  }
+
+  /// True when the PC runs a Snapshots older than the app needs for the safety checks.
+  bool get serverTooOld => serverVersion != null && !versionAtLeast(serverVersion);
+
+  /// Ask the PC which version it runs (the address may have been saved before this app kept it).
+  Future<void> refreshServerVersion() async {
+    try {
+      final h = await api?.get('/api/health');
+      final v = h is Map ? h['version'] as String? : null;
+      if (v != null && v != serverVersion) {
+        serverVersion = v;
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
   bool get signedIn => api?.token != null && user != null;
   String get server => api?.server ?? '';
 

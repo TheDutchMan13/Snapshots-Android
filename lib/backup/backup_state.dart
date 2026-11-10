@@ -69,6 +69,7 @@ class BackupStatus {
     this.lastFinished = 0,
     this.lastResult = '',
     this.lastSent = 0,
+    this.lastWaiting = 0,
     this.stopRequested = false,
     this.owner = '',
   });
@@ -82,6 +83,9 @@ class BackupStatus {
   int lastFinished;
   String lastResult;
   int lastSent;
+
+  /// Photos the last run found that still weren't in Snapshots when it ended (stopped, offline, unreadable).
+  int lastWaiting;
   bool stopRequested;
 
   /// Which run holds the backup (a random token), so two runs never work at the same time.
@@ -110,6 +114,7 @@ class BackupStatus {
         lastFinished: j['last_finished'] as int? ?? 0,
         lastResult: j['last_result'] as String? ?? '',
         lastSent: j['last_sent'] as int? ?? 0,
+        lastWaiting: j['last_waiting'] as int? ?? 0,
         stopRequested: stop,
         owner: j['owner'] as String? ?? '',
       );
@@ -129,9 +134,23 @@ class BackupStatus {
           'last_finished': lastFinished,
           'last_result': lastResult,
           'last_sent': lastSent,
+          'last_waiting': lastWaiting,
           'owner': owner,
         }),
       );
+
+  /// How long without a finished backup before the Backup screen says so.
+  static const staleWarningAfter = Duration(days: 3);
+
+  /// A sentence when backups seem to have stopped (nothing finished for days), else null.
+  /// Only said when a backup has finished before: a new install has nothing to warn about yet.
+  static String? staleWarning(int lastFinished, DateTime now) {
+    if (lastFinished <= 0) return null;
+    final ago = now.difference(DateTime.fromMillisecondsSinceEpoch(lastFinished));
+    if (ago < staleWarningAfter) return null;
+    return 'The last backup finished ${ago.inDays} days ago. Tap Back up now. If it keeps happening, check that '
+        'Android lets Snapshots run in the background (battery settings) and that Tailscale is on.';
+  }
 
   static Future<void> requestStop(bool value) => SharedPreferencesAsync().setBool(_stopKey, value);
 }

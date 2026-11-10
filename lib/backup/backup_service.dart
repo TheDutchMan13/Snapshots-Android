@@ -59,6 +59,12 @@ class BackupRun {
 
   /// Failed uploads in a row (saving on the PC failed): after a few, stop until the next run.
   int _failedInRow = 0;
+
+  /// How many photos this run found to send and has not got into Snapshots (null before it looked).
+  int? get waiting => _listed ? max(0, status.total - _sent - _already - _rejected) : null;
+
+  /// Set once the run has worked out what needs sending (so it knows how many are left).
+  bool _listed = false;
   DateTime _lastBeat = DateTime(0);
 
   /// Returns a sentence for the Backup screen.
@@ -95,7 +101,8 @@ class BackupRun {
       ..current = ''
       ..lastFinished = DateTime.now().millisecondsSinceEpoch
       ..lastResult = result
-      ..lastSent = _sent;
+      ..lastSent = _sent
+      ..lastWaiting = waiting ?? previous.lastWaiting;
     await status.save();
     return result;
   }
@@ -179,6 +186,7 @@ class BackupRun {
     status
       ..total = todo.length
       ..done = 0;
+    _listed = true;
     if (todo.isEmpty) return _summary(items.length);
 
     for (var i = 0; i < todo.length; i += 50) {

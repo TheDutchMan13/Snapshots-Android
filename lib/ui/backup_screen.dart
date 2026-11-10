@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../backup/background.dart';
@@ -10,6 +11,7 @@ import '../backup/backup_db.dart';
 import '../backup/backup_service.dart';
 import '../backup/backup_state.dart';
 import '../backup/free_space.dart';
+import '../state/session.dart';
 import 'media.dart';
 import 'theme.dart';
 
@@ -34,6 +36,7 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    context.read<Session>().refreshServerVersion();
     _tick = Timer.periodic(const Duration(seconds: 1), (_) => _refreshStatus());
   }
 
@@ -159,6 +162,19 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
                 const SizedBox(height: 12),
                 FilledButton(onPressed: _askPermission, child: const Text('Allow access')),
               ]),
+            ),
+          ),
+        if (context.watch<Session>().serverTooOld)
+          Card(
+            margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            color: Theme.of(context).colorScheme.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                'Snapshots on your PC is version ${context.read<Session>().serverVersion}. Update it to ${Session.minServerVersion} or newer: '
+                'until then a photo the PC lost is not sent again, and Free up space will not remove anything.',
+                style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+              ),
             ),
           ),
         _statusCard(st),
@@ -341,6 +357,17 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
             const SizedBox(height: 8),
             Text(st.lastResult),
             if (when != null) Text('Last run: $when', style: t.textTheme.bodySmall),
+            if (st.lastWaiting > 0)
+              Text('${st.lastWaiting} ${st.lastWaiting == 1 ? 'photo is' : 'photos are'} waiting to be backed up',
+                  style: t.textTheme.bodySmall?.copyWith(color: t.colorScheme.primary)),
+          ],
+          if (!st.running && BackupStatus.staleWarning(st.lastFinished, DateTime.now()) != null) ...[
+            const SizedBox(height: 8),
+            Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Icon(Icons.warning_amber_rounded, size: 18, color: t.colorScheme.error),
+              const SizedBox(width: 8),
+              Expanded(child: Text(BackupStatus.staleWarning(st.lastFinished, DateTime.now())!, style: TextStyle(color: t.colorScheme.error))),
+            ]),
           ],
           const SizedBox(height: 12),
           Wrap(spacing: 8, children: [
