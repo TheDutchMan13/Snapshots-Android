@@ -307,8 +307,11 @@ class _BackupScreenState extends State<BackupScreen> with WidgetsBindingObserver
     );
     if (choice == null || choice.isEmpty || !mounted) return;
     try {
-      final gone = await FreeSpace.remove(choice);
-      if (mounted) showMessage(context, gone == 0 ? 'Nothing was removed.' : 'Removed $gone from this phone. They\'re still in Snapshots.');
+      final r = await found.remove(choice);
+      final held = r.held == 0 ? '' : " ${r.held} stayed on the phone: Snapshots couldn't confirm ${r.held == 1 ? 'it' : 'them'} just now.";
+      if (mounted) {
+        showMessage(context, r.gone == 0 ? 'Nothing was removed.$held' : 'Removed ${r.gone} from this phone. They\'re still in Snapshots.$held');
+      }
     } catch (e) {
       if (mounted) showMessage(context, "Couldn't remove them: $e");
     }

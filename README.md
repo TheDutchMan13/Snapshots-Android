@@ -12,7 +12,8 @@ The phone app for [Snapshots](https://github.com/TheDutchMan13/Snapshots), the s
 - **People.** Everyone Snapshots recognised; give names, hide faces you don't want to see.
 - **More.** Favourites, videos, archive, the locked folder (with your PIN) and the trash.
 - **Share and save.** Share photos to other apps, or save the originals to the phone.
-- **Free up space.** In Backup: remove the phone's own copies of photos and videos that are safely in Snapshots (backed up, unchanged since, and not in the PC's trash). Android asks you to confirm. Needs Snapshots 0.14.6 or newer on the PC.
+- **Photos the PC lost are sent again.** Once a day, and whenever you tap Back up now, the app asks Snapshots whether it still has everything this phone sent. A photo whose file is gone from the PC (deleted there, or its folder emptied) is sent again while it is still on the phone. Needs a Snapshots newer than 0.14.6 on the PC; with an older one nothing changes.
+- **Free up space.** In Backup: remove the phone's own copies of photos and videos that are safely in Snapshots (backed up, unchanged since, and not in the PC's trash). Android asks you to confirm. Right before anything is removed, the app asks Snapshots again whether it sees each file on the PC's disk at that moment; a photo it can't confirm (deleted on the PC, in its trash, on a drive that isn't connected) stays on the phone. Needs a Snapshots newer than 0.14.6 on the PC: an older one answers from its records, not its disk, and the app then refuses to remove anything.
 - **Filter** any page by stars, colour label, pick or reject, size, shape, black and white, or camera.
 - **Stars, labels, pick and reject**, the **date** (set it, or move a batch by some hours), the **location** (a town or coordinates) and a **description**, from the photo's details or for a selection.
 - **Edit photos:** turn, mirror, straighten and crop. Only the recipe is saved on the PC; your original file is never changed.

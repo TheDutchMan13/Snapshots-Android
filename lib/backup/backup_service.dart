@@ -8,11 +8,14 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/client.dart';
 import '../state/session.dart';
 import 'backup_db.dart';
 import 'backup_state.dart';
+import 'library_check.dart';
+import 'phone_item.dart';
 
 /// The permission the backup needs: photos and videos, with their location (without it,
 /// Android hands out copies with the GPS position removed).
@@ -22,6 +25,8 @@ const backupPermission = PermissionRequestOption(
 
 /// Sends the phone's photos and videos to Snapshots.
 ///
+/// 0. Now and then, ask the server whether it still has what was sent before. A photo whose file
+///    is gone from the PC is sent again.
 /// 1. List the photos in the chosen albums and skip the ones already handled (by id and
 ///    modification time).
 /// 2. Hash the rest (SHA-1 of the whole file, as the server does) and ask the server which
@@ -32,11 +37,22 @@ const backupPermission = PermissionRequestOption(
 class BackupRun {
   BackupRun({required this.background});
 
+  /// For tests: a run that talks to [api] and keeps its notes in [db].
+  BackupRun.withParts({required Api api, required BackupDb db, this.background = false}) {
+    _api = api;
+    _db = db;
+  }
+
   final bool background;
   final status = BackupStatus();
   late BackupDb _db;
   late Api _api;
-  int _sent = 0, _already = 0, _rejected = 0, _failed = 0;
+  int _sent = 0, _already = 0, _rejected = 0, _failed = 0, _lost = 0;
+
+  /// The background run asks Snapshots whether it still has everything at most this often
+  /// ("Back up now" always asks).
+  static const recheckEvery = Duration(hours: 24);
+  static const _recheckKey = 'backup.rechecked';
 
   /// Failed uploads in a row (saving on the PC failed): after a few, stop until the next run.
   int _failedInRow = 0;
@@ -118,36 +134,60 @@ class BackupRun {
     await _api.get('/api/status');
 
     _db = await BackupDb.open();
-    {
-      await _beat('Looking for new photos', force: true);
-      List<AssetEntity> assets;
-      try {
-        assets = await _choose(settings);
-      } on PlatformException {
-        return _noAccess;
-      } on StateError catch (e) {
-        return e.message;
-      }
-      final known = await _db.known();
-      final todo = <AssetEntity>[];
-      for (final a in assets) {
-        final k = known[a.id];
-        final modified = a.modifiedDateSecond ?? 0;
-        if (k != null && k.modified == modified && (k.status == 'sent' || k.status == 'rejected')) continue;
-        todo.add(a);
-      }
-      status
-        ..total = todo.length
-        ..done = 0;
-      if (todo.isEmpty) return _summary(assets.length);
-
-      for (var i = 0; i < todo.length; i += 50) {
-        if (await _stopped()) return 'Stopped. ${_counts()}';
-        await _batch(todo.sublist(i, i + 50 > todo.length ? todo.length : i + 50), known);
-      }
-      return _summary(assets.length);
+    await recheckSent(force: !background);
+    await _beat('Looking for new photos', force: true);
+    List<PhoneItem> items;
+    try {
+      items = [for (final a in await _choose(settings)) GalleryItem(a)];
+    } on PlatformException {
+      return _noAccess;
+    } on StateError catch (e) {
+      return e.message;
     }
+    return sendAll(items);
   }
+
+  /// Does Snapshots still have what this phone sent? Whatever it lost (the file is gone from the PC)
+  /// goes back to "not sent yet", so this run sends it again. Returns how many.
+  ///
+  /// Without this, a photo sent once counted as backed up for good, even after its file was deleted
+  /// on the PC. An older Snapshots can't tell, and nothing changes then.
+  Future<int> recheckSent({bool force = false}) async {
+    final prefs = SharedPreferencesAsync();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force) {
+      final last = await prefs.getInt(_recheckKey) ?? 0;
+      if (now - last < recheckEvery.inMilliseconds && now >= last) return 0;
+    }
+    await _beat('Checking the backup', force: true);
+    final sent = await _db.sent();
+    if (sent.isEmpty) return 0;
+    final lost = await LibraryCheck.lost(_api, [for (final s in sent) s.sha1]);
+    if (lost == null) return 0; // an older Snapshots: it can't say
+    if (lost.isNotEmpty) _lost += await _db.sendAgain(lost);
+    await prefs.setInt(_recheckKey, now);
+    return _lost;
+  }
+
+  /// Sends whatever of [items] isn't in Snapshots yet. Returns the sentence for the Backup screen.
+  Future<String> sendAll(List<PhoneItem> items) async {
+    final known = await _db.known();
+    final todo = [for (final a in items) if (needsWork(known[a.id], a.modified)) a];
+    status
+      ..total = todo.length
+      ..done = 0;
+    if (todo.isEmpty) return _summary(items.length);
+
+    for (var i = 0; i < todo.length; i += 50) {
+      if (await _stopped()) return 'Stopped. ${_counts()}';
+      await _batch(todo.sublist(i, i + 50 > todo.length ? todo.length : i + 50), known);
+    }
+    return _summary(items.length);
+  }
+
+  /// Does a photo need looking at? Not if it was sent, or turned away, and hasn't changed since.
+  static bool needsWork(({int modified, String status, String? sha1})? known, int modified) =>
+      !(known != null && known.modified == modified && (known.status == 'sent' || known.status == 'rejected'));
 
   static const _noAccess =
       'Snapshots needs access to your photos and videos. Open the Backup screen and tap "Allow access".';
@@ -158,6 +198,7 @@ class BackupRun {
       if (_already > 0) '$_already were already in Snapshots',
       if (_rejected > 0) "$_rejected couldn't be backed up",
       if (_failed > 0) "$_failed couldn't be saved on the PC and will be tried again",
+      if (_lost > 0) '$_lost ${_lost == 1 ? 'was' : 'were'} no longer on the PC and ${_lost == 1 ? 'is' : 'are'} sent again',
     ];
     return parts.isEmpty ? '' : '${parts.join(', ')}.';
   }
@@ -198,8 +239,8 @@ class BackupRun {
     return out;
   }
 
-  Future<void> _batch(List<AssetEntity> batch, Map<String, ({int modified, String status, String? sha1})> known) async {
-    final hashed = <({AssetEntity a, File f, String sha1, String name, bool temp})>[];
+  Future<void> _batch(List<PhoneItem> batch, Map<String, ({int modified, String status, String? sha1})> known) async {
+    final hashed = <({PhoneItem a, File f, String sha1, String name, bool temp})>[];
     try {
       await _hashAndSend(batch, known, hashed);
     } finally {
@@ -214,20 +255,15 @@ class BackupRun {
     }
   }
 
-  Future<void> _hashAndSend(List<AssetEntity> batch, Map<String, ({int modified, String status, String? sha1})> known,
-      List<({AssetEntity a, File f, String sha1, String name, bool temp})> hashed) async {
+  Future<void> _hashAndSend(List<PhoneItem> batch, Map<String, ({int modified, String status, String? sha1})> known,
+      List<({PhoneItem a, File f, String sha1, String name, bool temp})> hashed) async {
     // 1. Hash.
     for (final a in batch) {
       if (await _stopped()) return;
-      final name = await _name(a);
+      final name = await a.name();
       status.current = name;
       await _beat('Checking');
-      File? f;
-      try {
-        f = await a.originFile;
-      } catch (_) {
-        f = null;
-      }
+      final f = await a.file();
       if (f == null || !await f.exists()) {
         _rejected++;
         await _done(a, 'rejected', name: name, reason: "Couldn't read the file on the phone.");
@@ -235,23 +271,24 @@ class BackupRun {
       }
       final k = known[a.id];
       String hash;
-      if (k != null && k.sha1 != null && k.modified == (a.modifiedDateSecond ?? 0)) {
+      if (k != null && k.sha1 != null && k.modified == a.modified) {
         hash = k.sha1!;
       } else {
         hash = (await sha1.bind(f.openRead()).first).toString();
-        await _db.put(a.id, a.modifiedDateSecond ?? 0, 'hashed', sha1: hash, name: name);
+        await _db.put(a.id, a.modified, 'hashed', sha1: hash, name: name);
       }
       hashed.add((a: a, f: f, sha1: hash, name: name, temp: await _isTemp(f)));
     }
     if (hashed.isEmpty) return;
 
-    // 2. Which does the server have already?
+    // 2. Which does the server have already? (A newer Snapshots looks for the files on its disk; a record
+    // whose file is gone doesn't count, and the photo is sent.)
     final r = await _api.post('/api/upload/check', {'sha1': [for (final h in hashed) h.sha1]});
-    final have = {for (final h in (r['have'] as List)) '$h'};
+    final have = {for (final h in (r['have'] as List)) '$h'.toLowerCase()};
 
     // 3. Upload the rest.
     for (final h in hashed) {
-      if (have.contains(h.sha1)) {
+      if (have.contains(h.sha1.toLowerCase())) {
         _already++;
         await _done(h.a, 'sent', sha1: h.sha1, name: h.name);
         continue;
@@ -263,7 +300,7 @@ class BackupRun {
     }
   }
 
-  Future<void> _upload(AssetEntity a, File f, String hash, String name) async {
+  Future<void> _upload(PhoneItem a, File f, String hash, String name) async {
     final form = FormData.fromMap({'files': await MultipartFile.fromFile(f.path, filename: name)});
     Response<dynamic> resp;
     try {
@@ -322,11 +359,11 @@ class BackupRun {
 
   /// Snapshots dates a photo from the date inside it, or in its name. A file with neither (some
   /// screenshots, downloads, edited copies) would get the upload time: give it the phone's date.
-  Future<void> _fixDate(AssetEntity a, int id) async {
+  Future<void> _fixDate(PhoneItem a, int id) async {
     try {
       final j = await _api.get('/api/assets/$id');
       final server = DateTime.tryParse('${j['taken_at']}');
-      final phone = a.createDateTime;
+      final phone = a.created;
       if (server == null || phone.year < 1990) return;
       final sinceUpload = DateTime.now().difference(server).abs();
       final apart = server.difference(phone).abs();
@@ -342,26 +379,20 @@ class BackupRun {
     }
   }
 
-  Future<void> _done(AssetEntity a, String st, {String? sha1, int? serverId, String? name, String? reason}) async {
-    await _db.put(a.id, a.modifiedDateSecond ?? 0, st, sha1: sha1, serverId: serverId, name: name, reason: reason);
+  Future<void> _done(PhoneItem a, String st, {String? sha1, int? serverId, String? name, String? reason}) async {
+    await _db.put(a.id, a.modified, st, sha1: sha1, serverId: serverId, name: name, reason: reason);
     status.done++;
     await _beat(status.phase);
   }
 
-  static Future<String> _name(AssetEntity a) async {
-    var n = a.title ?? '';
-    if (n.isEmpty) {
-      try {
-        n = await a.titleAsync;
-      } catch (_) {}
-    }
-    if (n.isEmpty) n = '${a.type == AssetType.video ? 'VID' : 'IMG'}_${a.id}${a.type == AssetType.video ? '.mp4' : '.jpg'}';
-    return n;
-  }
-
   /// On Android 10 the plugin copies the file into the app's cache first; delete those copies.
   static Future<bool> _isTemp(File f) async {
-    final dirs = <String>[(await getTemporaryDirectory()).path];
+    final dirs = <String>[];
+    try {
+      dirs.add((await getTemporaryDirectory()).path);
+    } catch (_) {
+      return false; // no such folder to ask about (in tests): then nothing was copied into it
+    }
     try {
       final ext = await getExternalCacheDirectories();
       if (ext != null) dirs.addAll(ext.map((d) => d.path));

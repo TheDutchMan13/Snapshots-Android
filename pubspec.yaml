@@ -30,6 +30,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Tests only, and already part of shared_preferences: an in-memory stand-in for the phone's settings store.
+  shared_preferences_platform_interface: ^2.4.0
 
 flutter:
   uses-material-design: true

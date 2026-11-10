@@ -10,6 +10,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:snapshots_app/api/client.dart';
 import 'package:snapshots_app/api/models.dart';
+import 'package:snapshots_app/backup/library_check.dart';
 import 'package:snapshots_app/state/feed.dart';
 
 void main() {
@@ -121,6 +122,46 @@ void main() {
     await api.post('/api/trash/restore', {'ids': [id]});
     await dir.delete(recursive: true);
   }, skip: skip);
+
+  // Also needs SNAPSHOTS_TEST_LIBRARY: the demo library's folder on this machine (the test deletes the
+  // file it uploaded from it, as someone might in Windows).
+  final library = env['SNAPSHOTS_TEST_LIBRARY'];
+  test('free up space and the backup go by what is on the PC\'s disk, not its records', () async {
+    final dir = await Directory.systemTemp.createTemp('snap');
+    final f = File('${dir.path}/IMG_20190506_070809.jpg');
+    await f.writeAsBytes(_tinyJpeg(Random().nextInt(1 << 30)));
+    final hash = (await sha1.bind(f.openRead()).first).toString();
+    Future<Map> upload() async {
+      final r = await api.dio.post('/api/upload',
+          data: FormData.fromMap({'files': await MultipartFile.fromFile(f.path, filename: 'IMG_20190506_070809.jpg')}));
+      return (r.data['results'] as List).first as Map;
+    }
+
+    expect(await LibraryCheck.keptOnDisk(api, [hash]), isEmpty);
+    final first = await upload();
+    expect(first['status'], 'added');
+    expect(await LibraryCheck.keptOnDisk(api, [hash]), {hash});
+    expect(await LibraryCheck.lost(api, [hash]), isEmpty);
+
+    // In the trash: sent, but not safe to remove from the phone.
+    await api.post('/api/trash', {'ids': [first['id']]});
+    expect(await LibraryCheck.keptOnDisk(api, [hash]), isEmpty);
+    expect(await LibraryCheck.lost(api, [hash]), isEmpty);
+    await api.post('/api/trash/restore', {'ids': [first['id']]});
+
+    // The file is deleted on the PC. Its record stays, and no scan has run.
+    final stored = Directory(library!).listSync(recursive: true).whereType<File>().where((x) => x.path.endsWith('IMG_20190506_070809.jpg'));
+    expect(stored.length, 1);
+    stored.single.deleteSync();
+    expect(await LibraryCheck.keptOnDisk(api, [hash]), isEmpty, reason: 'the phone keeps its copy');
+    expect(await LibraryCheck.lost(api, [hash]), {hash}, reason: 'the backup sends it again');
+
+    final again = await upload();
+    expect(again['status'], 'added', reason: 'not thrown away as a duplicate');
+    expect(again['id'], first['id'], reason: 'the same item carries on');
+    expect(await LibraryCheck.keptOnDisk(api, [hash]), {hash});
+    await dir.delete(recursive: true);
+  }, skip: skip ?? (library == null ? 'Set SNAPSHOTS_TEST_LIBRARY to the demo library folder' : null));
 }
 
 /// A valid 1×1 JPEG with a comment that makes each one different.

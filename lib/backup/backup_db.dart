@@ -87,6 +87,19 @@ class BackupDb {
     await batch.commit(noResult: true);
   }
 
+  /// Sent before, but Snapshots no longer has the file: back to "not sent yet", so the next look sends
+  /// it again. Returns how many. (Items already removed from the phone are left alone.)
+  Future<int> sendAgain(Iterable<String> sha1s) async {
+    var n = 0;
+    final all = sha1s.toList();
+    for (var i = 0; i < all.length; i += 500) {
+      final part = all.sublist(i, i + 500 > all.length ? all.length : i + 500);
+      n += await _db.update('items', {'status': 'hashed', 'server_id': null},
+          where: "status = 'sent' AND sha1 IN (${List.filled(part.length, '?').join(',')})", whereArgs: part);
+    }
+    return n;
+  }
+
   /// Forget everything (after switching to another server, everything is checked again).
   Future<void> clear() => _db.delete('items');
 
