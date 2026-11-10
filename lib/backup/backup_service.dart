@@ -47,12 +47,15 @@ class BackupRun {
   final status = BackupStatus();
   late BackupDb _db;
   late Api _api;
-  int _sent = 0, _already = 0, _rejected = 0, _failed = 0, _lost = 0;
+  int _sent = 0, _already = 0, _rejected = 0, _failed = 0, _lost = 0, _unreadable = 0;
 
   /// The background run asks Snapshots whether it still has everything at most this often
   /// ("Back up now" always asks).
   static const recheckEvery = Duration(hours: 24);
   static const _recheckKey = 'backup.rechecked';
+
+  /// 4xx answers that say "not now", not "not this file": the run stops and the file is tried again.
+  static const temporaryStatus = {401, 408, 409, 423, 425, 429};
 
   /// Failed uploads in a row (saving on the PC failed): after a few, stop until the next run.
   int _failedInRow = 0;
@@ -198,6 +201,7 @@ class BackupRun {
       if (_already > 0) '$_already were already in Snapshots',
       if (_rejected > 0) "$_rejected couldn't be backed up",
       if (_failed > 0) "$_failed couldn't be saved on the PC and will be tried again",
+      if (_unreadable > 0) "$_unreadable couldn't be read on the phone and will be tried again",
       if (_lost > 0) '$_lost ${_lost == 1 ? 'was' : 'were'} no longer on the PC and ${_lost == 1 ? 'is' : 'are'} sent again',
     ];
     return parts.isEmpty ? '' : '${parts.join(', ')}.';
@@ -265,8 +269,10 @@ class BackupRun {
       await _beat('Checking');
       final f = await a.file();
       if (f == null || !await f.exists()) {
-        _rejected++;
-        await _done(a, 'rejected', name: name, reason: "Couldn't read the file on the phone.");
+        // Often only for now (a cloud-only or half-written file, a permission that comes back):
+        // not given up on. It stays "not sent yet", so every run looks at it again.
+        _unreadable++;
+        await _done(a, 'hashed', name: name, reason: "Couldn't read the file on the phone. It will be tried again.");
         continue;
       }
       final k = known[a.id];
@@ -313,8 +319,9 @@ class BackupRun {
       final code = err.status;
       // This one file was refused (too big for a proxy in between, or 413 for a file over the
       // PC's limit): note it and go on with the others. Without a connection, signed out, the
-      // library drive offline or full (507): stop for now; the file is tried again next time.
-      if (code != null && code >= 400 && code < 500 && code != 401 && code != 409 && code != 429) {
+      // library drive offline or full (507), or an answer that only means "not now" (a timeout,
+      // locked, too early, too many requests): stop for now; the file is tried again next time.
+      if (code != null && code >= 400 && code < 500 && !temporaryStatus.contains(code)) {
         _rejected++;
         await _done(a, 'rejected', sha1: hash, name: name, reason: err.message);
         return;

@@ -364,12 +364,19 @@ void main() {
       expect(pc.onDisk.length, 2);
     });
 
-    test('a file that can\'t be read is noted, and the others go on', () async {
+    test('a file that can\'t be read is tried again, and the others go on', () async {
       final a = photo('a')..readable = false;
       final b = photo('b');
-      expect(await run().sendAll([a, b]), "Done: 1 sent, 1 couldn't be backed up.");
-      expect(db.statusOf('a'), 'rejected');
+      expect(await run().sendAll([a, b]), "Done: 1 sent, 1 couldn't be read on the phone and will be tried again.");
+      expect(db.statusOf('a'), 'hashed'); // not given up on
       expect(db.statusOf('b'), 'sent');
+      expect(await db.count('rejected'), 0);
+      // Still unreadable at the next run: asked about again, and noted again.
+      expect(await run().sendAll([a, b]), "Done: 1 couldn't be read on the phone and will be tried again.");
+      a.readable = true; // the permission came back
+      expect(await run().sendAll([a, b]), 'Done: 1 sent.');
+      expect(db.statusOf('a'), 'sent');
+      expect(pc.uploads, ['b.jpg', 'a.jpg']);
     });
 
     test('a file the PC turns away is noted, and the others go on', () async {
@@ -384,6 +391,17 @@ void main() {
       expect(await run().sendAll([c, d]), "Done: 1 sent, 1 couldn't be backed up.");
       expect(db.statusOf('c'), 'rejected');
       expect(db.statusOf('d'), 'sent');
+    });
+
+    test('an answer that only means "not now" stops the run and keeps the file for next time', () async {
+      for (final code in [408, 423, 425]) {
+        final a = photo('a$code'), b = photo('b$code');
+        pc.uploadAnswers.add(code);
+        await expectLater(run().sendAll([a, b]), throwsA(isA<ApiError>().having((e) => e.status, 'status', code)));
+        expect(db.statusOf(a.id), 'hashed');
+        expect(await db.count('rejected'), 0);
+        expect(await run().sendAll([a, b]), 'Done: 2 sent.');
+      }
     });
 
     test('when the PC could not save a file, it is tried again next time', () async {
