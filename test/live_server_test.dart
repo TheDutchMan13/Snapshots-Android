@@ -50,6 +50,10 @@ void main() {
       expect(!feed.items[i].takenAt.isAfter(feed.items[i - 1].takenAt), isTrue);
     }
     final months = (await api.get('/api/timeline', query: {'archived': 'hide', 'stacks': true}))['months'] as List;
+    if (months.isEmpty) {
+      markTestSkipped('This server has no photos: use the demo library (see the top of this file).');
+      return;
+    }
     expect(feed.items.length, months.fold<int>(0, (s, m) => s + (m['count'] as int)));
 
     // Jumping to a month starts there.
@@ -72,7 +76,11 @@ void main() {
 
   test('albums, favourites and search', () async {
     final albums = [for (final j in (await api.get('/api/albums'))['albums'] as List) Album(Map<String, dynamic>.from(j as Map))];
-    final full = albums.firstWhere((a) => a.count > 0);
+    final full = albums.where((a) => a.count > 0).firstOrNull;
+    if (full == null) {
+      markTestSkipped('This server has no album with photos in it: use the demo library (see the top of this file).');
+      return;
+    }
     final feed = Feed(api, {'album': full.id});
     await feed.loadMore();
     expect(feed.items.length, full.count);
