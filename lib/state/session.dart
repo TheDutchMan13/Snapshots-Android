@@ -76,6 +76,12 @@ class Session extends ChangeNotifier {
     return true;
   }
 
+  /// The first Snapshots that can write an edit into a photo's own file (Save into the file).
+  static const fileChangeServerVersion = '0.15.0';
+
+  /// Is the PC's Snapshots known to be new enough for that? (Unknown counts as no: the option stays hidden.)
+  bool get serverCanChangeFiles => serverVersion != null && versionAtLeast(serverVersion, fileChangeServerVersion);
+
   /// True when the PC runs a Snapshots older than the app needs for the safety checks.
   bool get serverTooOld => serverVersion != null && !versionAtLeast(serverVersion);
 

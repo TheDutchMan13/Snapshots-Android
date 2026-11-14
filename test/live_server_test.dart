@@ -74,6 +74,24 @@ void main() {
     expect(d.asset.id, a.id);
   }, skip: skip);
 
+  test('an edit is written into the photo\'s file, and the old file can be put back', () async {
+    // Changes a photo's file on the server: use the throwaway demo library (see the top of this file).
+    if (!(env['SNAPSHOTS_TEST_CHANGE_FILES'] == '1')) {
+      markTestSkipped('Set SNAPSHOTS_TEST_CHANGE_FILES=1 (and use a throwaway demo library) to run this one.');
+      return;
+    }
+    final feed = Feed(api, const {'archived': 'hide', 'stacks': true}, pageSize: 60);
+    await feed.loadMore();
+    final a = feed.items.firstWhere((x) => x.kind == 'photo' && RegExp(r'\.jpe?g$', caseSensitive: false).hasMatch(x.filename) && x.width != x.height);
+    await api.post('/api/assets/${a.id}/edits', {'edits': {'rotate': 90}});
+    final turned = await api.post('/api/assets/${a.id}/apply-edits', <String, dynamic>{}) as Map;
+    expect([turned['width'], turned['height']], [a.height, a.width]); // the file itself is turned
+    expect(turned['edited'], false);                                  // nothing left to apply twice
+    expect((turned['file_backups'] as List), isNotEmpty);             // the old file is kept
+    final back = await api.post('/api/assets/${a.id}/restore-file', <String, dynamic>{}) as Map;
+    expect([back['width'], back['height']], [a.width, a.height]);     // and put back, exactly as it was
+  }, skip: skip);
+
   test('albums, favourites and search', () async {
     final albums = [for (final j in (await api.get('/api/albums'))['albums'] as List) Album(Map<String, dynamic>.from(j as Map))];
     final full = albums.where((a) => a.count > 0).firstOrNull;

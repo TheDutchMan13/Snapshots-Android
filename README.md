@@ -16,7 +16,7 @@ The phone app for [Snapshots](https://github.com/TheDutchMan13/Snapshots), the s
 - **Free up space.** In Backup: remove the phone's own copies of photos and videos that are safely in Snapshots (backed up, unchanged since, and not in the PC's trash). Android asks you to confirm. Right before anything is removed, the app asks Snapshots again whether it sees each file on the PC's disk at that moment; a photo it can't confirm (deleted on the PC, in its trash, on a drive that isn't connected) stays on the phone. Needs Snapshots 0.14.7 or newer on the PC: an older one answers from its records, not its disk, and the app then refuses to remove anything.
 - **Filter** any page by stars, colour label, pick or reject, size, shape, black and white, or camera.
 - **Stars, labels, pick and reject**, the **date** (set it, or move a batch by some hours), the **location** (a town or coordinates) and a **description**, from the photo's details or for a selection.
-- **Edit photos:** turn, mirror, straighten and crop. Only the recipe is saved on the PC; your original file is never changed.
+- **Edit photos:** turn, mirror, straighten and crop. **Save** keeps only the recipe on the PC; your original file is not changed. An administrator can also choose **Save into the photo's file** (menu next to Save; needs Snapshots 0.15.0 or newer on the PC), which turns the file itself, JPEG and PNG only. The PC keeps the old file and can put it back.
 - **Comments** on photos and albums, and **Activity**: what others commented and added to albums.
 - **Calendar, Highlights, Events, Year in review and Pets**, under More.
 - **Smart albums** that fill themselves from rules (people, words, what's in the photo, dates, stars), and a **slideshow** of any page.

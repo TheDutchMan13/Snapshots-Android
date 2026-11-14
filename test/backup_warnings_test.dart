@@ -40,6 +40,12 @@ void main() {
       expect(Session.versionAtLeast('dev'), isTrue);
     });
 
+    test('saving into the photo\'s file needs a Snapshots that can do it', () {
+      expect(Session.versionAtLeast('0.14.7', Session.fileChangeServerVersion), isFalse);
+      expect(Session.versionAtLeast('0.15.0', Session.fileChangeServerVersion), isTrue);
+      expect(Session.versionAtLeast('0.15.1', Session.fileChangeServerVersion), isTrue);
+    });
+
     test('the README names the same oldest version as the app', () {
       final readme = File('README.md').readAsStringSync();
       expect(readme, contains('Snapshots ${Session.minServerVersion} or newer'));

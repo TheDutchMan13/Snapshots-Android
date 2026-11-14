@@ -3,12 +3,23 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../api/client.dart';
+import 'package:provider/provider.dart';
+
 import '../api/models.dart';
+import '../state/session.dart';
 import 'media.dart';
 import 'theme.dart';
 
-/// Turn, mirror, straighten and crop a photo, as Snapshots on the PC does. Only the recipe is saved on the
-/// PC; the original file is never changed. Returns the photo as it is now, or null if nothing was saved.
+/// What the editor hands back: the photo as it is now, and whether its own file was changed.
+class EditResult {
+  const EditResult(this.asset, {this.fileChanged = false});
+  final Asset asset;
+  final bool fileChanged;
+}
+
+/// Turn, mirror, straighten and crop a photo, as Snapshots on the PC does. Save keeps only the recipe on the
+/// PC: the original file is not changed. An administrator can also choose "Save into the photo's file", which
+/// changes the file itself (the PC keeps the old one). Returns an [EditResult], or null if nothing was saved.
 class EditorScreen extends StatefulWidget {
   const EditorScreen({super.key, required this.asset});
 
@@ -40,6 +51,7 @@ class _EditorScreenState extends State<EditorScreen> {
     super.initState();
     final a = widget.asset;
     final api = apiOf(context);
+    context.read<Session>().refreshServerVersion(); // (decides whether "Save into the file" is offered)
     _provider = serverImage(api, '/api/assets/${a.id}/view?plain=true&v=${a.v}', cache: false);
     _stream = _provider!.resolve(const ImageConfiguration());
     _listener = ImageStreamListener((info, _) {
@@ -120,7 +132,44 @@ class _EditorScreenState extends State<EditorScreen> {
         : {'rotate': _rotate, 'flip': _flip, 'straighten': double.parse(_angle.toStringAsFixed(2)), 'crop': whole ? null : _crop};
     try {
       final r = await apiOf(context).post('/api/assets/${widget.asset.id}/edits', {'edits': edits});
-      if (mounted) Navigator.pop(context, Asset(Map<String, dynamic>.from(r as Map)));
+      if (mounted) Navigator.pop(context, EditResult(Asset(Map<String, dynamic>.from(r as Map))));
+    } on ApiError catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        showMessage(context, e.message);
+      }
+    }
+  }
+
+  /// Only an administrator, only a JPEG or PNG photo, and only when the PC's Snapshots can do it.
+  bool get _canChangeFile {
+    final session = context.watch<Session>();
+    final a = widget.asset;
+    return session.user?.isAdmin == true &&
+        session.serverCanChangeFiles &&
+        a.kind == 'photo' &&
+        RegExp(r'\.(jpe?g|png)$', caseSensitive: false).hasMatch(a.filename);
+  }
+
+  static const _changeFileText =
+      "This turns the photo's own file on your PC, not just how Snapshots shows it, so other programs show it that way too. "
+      "Snapshots keeps the old file safe (put it back from the photo's details on the PC), saves the picture again at "
+      'high quality, and looks for the faces in it again.';
+
+  Future<void> _saveIntoFile() async {
+    final ok = await confirm(context, 'Change the original file?', _changeFileText, ok: 'Change the file', danger: true);
+    if (!ok || !mounted) return;
+    setState(() => _saving = true);
+    final whole = _crop[2] >= .999 && _crop[3] >= .999;
+    try {
+      final api = apiOf(context);
+      if (_changed) {
+        await api.post('/api/assets/${widget.asset.id}/edits', {
+          'edits': {'rotate': _rotate, 'flip': _flip, 'straighten': double.parse(_angle.toStringAsFixed(2)), 'crop': whole ? null : _crop},
+        });
+      }
+      final r = await api.post('/api/assets/${widget.asset.id}/apply-edits', <String, dynamic>{});
+      if (mounted) Navigator.pop(context, EditResult(Asset(Map<String, dynamic>.from(r as Map)), fileChanged: true));
     } on ApiError catch (e) {
       if (mounted) {
         setState(() => _saving = false);
@@ -146,6 +195,12 @@ class _EditorScreenState extends State<EditorScreen> {
               padding: const EdgeInsets.only(right: 8),
               child: FilledButton(onPressed: ready && !_saving ? _save : null, child: Text(_saving ? 'Saving…' : 'Save')),
             ),
+            if (_canChangeFile)
+              PopupMenuButton<String>(
+                enabled: ready && !_saving && (_changed || widget.asset.edited),
+                onSelected: (_) => _saveIntoFile(),
+                itemBuilder: (_) => const [PopupMenuItem(value: 'file', child: Text("Save into the photo's file…"))],
+              ),
           ],
         ),
         body: _error != null

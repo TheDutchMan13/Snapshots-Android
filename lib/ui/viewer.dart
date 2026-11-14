@@ -191,8 +191,9 @@ class _ViewerState extends State<Viewer> {
   bool get _editable => widget.mode != GridMode.trash && widget.mode != GridMode.locked;
 
   Future<void> _edit(Asset a) async {
-    final edited = await Navigator.of(context).push<Asset>(MaterialPageRoute(builder: (_) => EditorScreen(asset: a)));
-    if (edited == null || !mounted) return;
+    final result = await Navigator.of(context).push<EditResult>(MaterialPageRoute(builder: (_) => EditorScreen(asset: a)));
+    if (result == null || !mounted) return;
+    final edited = result.asset;
     final i = feed.items.indexWhere((x) => x.id == a.id);
     if (i >= 0) {
       // The new version (v) makes the grid and the viewer load the edited picture.
@@ -200,7 +201,13 @@ class _ViewerState extends State<Viewer> {
       feed.items[i] = edited;
       feed.changed();
     }
-    showMessage(context, edited.edited ? 'Saved. Your original file is unchanged.' : 'Back to the original.');
+    showMessage(
+        context,
+        result.fileChanged
+            ? 'The file was changed. The old file is kept on the PC (Snapshots on the PC can put it back).'
+            : edited.edited
+                ? 'Saved. Your original file is unchanged.'
+                : 'Back to the original.');
   }
 
   Widget _bottomBar(Asset a) {
