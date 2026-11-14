@@ -1,7 +1,7 @@
 name: snapshots_app
 description: "Snapshots for Android: back up your phone and browse your Snapshots photo library."
 publish_to: 'none'
-version: 0.2.1+5
+version: 0.3.0+6
 
 environment:
   sdk: ^3.9.0
