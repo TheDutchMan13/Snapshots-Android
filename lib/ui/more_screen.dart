@@ -14,7 +14,7 @@ import 'grid.dart';
 import 'media.dart';
 import 'theme.dart';
 
-const appVersion = '0.3.0';
+const appVersion = '0.3.1';
 
 class MoreScreen extends StatefulWidget {
   const MoreScreen({super.key});

@@ -92,6 +92,25 @@ void main() {
     expect([back['width'], back['height']], [a.width, a.height]);     // and put back, exactly as it was
   }, skip: skip);
 
+  test('photos are turned by hand', () async {
+    // Changes recipes on the server: use the throwaway demo library (see the top of this file).
+    if (!(env['SNAPSHOTS_TEST_CHANGE_FILES'] == '1')) {
+      markTestSkipped('Set SNAPSHOTS_TEST_CHANGE_FILES=1 (and use a throwaway demo library) to run this one.');
+      return;
+    }
+    final feed = Feed(api, const {'archived': 'hide', 'stacks': true}, pageSize: 60);
+    await feed.loadMore();
+    final a = feed.items.firstWhere((x) => x.kind == 'photo' && x.width != x.height && !x.edited);
+    final turned = await api.post('/api/assets/turn', {'ids': [a.id], 'degrees': 90}) as Map;
+    expect(turned['turned'], [a.id]);
+    final now = await api.get('/api/assets/${a.id}') as Map;
+    expect((now['edits'] as Map)['rotate'], 90);
+    final back = await api.post('/api/assets/turn', {'ids': [a.id], 'degrees': 270}) as Map;
+    expect(back['turned'], [a.id]);                                    // a full turn leaves no edit behind
+    expect((await api.get('/api/assets/${a.id}') as Map)['edits'], isNull);
+
+  }, skip: skip);
+
   test('albums, favourites and search', () async {
     final albums = [for (final j in (await api.get('/api/albums'))['albums'] as List) Album(Map<String, dynamic>.from(j as Map))];
     final full = albums.where((a) => a.count > 0).firstOrNull;

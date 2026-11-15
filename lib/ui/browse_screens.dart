@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
 import '../state/feed.dart';
+import '../state/session.dart';
+import 'actions.dart';
 import 'albums_screen.dart';
 import 'grid.dart';
 import 'media.dart';
@@ -395,11 +398,62 @@ class PetsScreen extends StatelessWidget {
                 title: (p['name'] as String?) ?? (p['species'] == 'cat' ? 'A cat' : p['species'] == 'dog' ? 'A dog' : 'A pet'),
                 subtitle: '${p['photos']} photos${p['name'] == null ? ' · hold to name' : ''}',
                 icon: Icons.pets,
-                onTap: () => openGrid(context, (p['name'] as String?) ?? 'Pet', {'pet': p['id'], 'archived': 'hide', 'stacks': true}),
+                onTap: () async {
+                  await Navigator.of(context).push(MaterialPageRoute(builder: (_) => PetScreen(pet: p)));
+                  if (context.mounted) await reload();
+                },
               ),
             ),
         ]);
       },
+    );
+  }
+}
+
+/// One pet's photos. When the PC's Snapshots is new enough (0.15.2), photos can be taken out or moved to another pet.
+class PetScreen extends StatefulWidget {
+  const PetScreen({super.key, required this.pet});
+
+  final Map pet;
+
+  @override
+  State<PetScreen> createState() => _PetScreenState();
+}
+
+class _PetScreenState extends State<PetScreen> {
+  late String? _name = widget.pet['name'] as String?;
+  late final Feed _feed = Feed(apiOf(context), {'pet': widget.pet['id'], 'archived': 'hide', 'stacks': true});
+
+  Future<void> _rename() async {
+    final name = await askText(context, _name == null ? 'Name this pet' : 'Rename', initial: _name ?? '', label: 'Name');
+    if (name == null || !mounted) return;
+    try {
+      await apiOf(context).patch('/api/pets/${widget.pet['id']}', {'name': name});
+      if (mounted) setState(() => _name = name.isEmpty ? null : name);
+    } on ApiError catch (e) {
+      if (mounted) showMessage(context, e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final id = widget.pet['id'] as int;
+    final fix = context.read<Session>().serverCanFixByHand;
+    return GridScreen(
+      title: _name ?? AssetActions.petName(widget.pet),
+      feed: _feed,
+      emptyText: 'No photos of this pet.',
+      filterable: true,
+      actions: [
+        PopupMenuButton<String>(
+          itemBuilder: (_) => [PopupMenuItem(value: 'name', child: Text(_name == null ? 'Add a name' : 'Rename'))],
+          onSelected: (_) => _rename(),
+        ),
+      ],
+      selectionMenu: [
+        if (fix) SelectionEntry('Not this pet', (a, items) => a.notThisPet(id, items), removes: true),
+        if (fix) SelectionEntry("It's another pet…", (a, items) => a.putInPet(items, except: id), removes: true),
+      ],
     );
   }
 }

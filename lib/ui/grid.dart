@@ -18,6 +18,15 @@ import 'viewer.dart';
 enum GridMode { library, archive, trash, album, locked }
 
 /// A screen with a grid of photos: the timeline, an album, a person, a search result…
+/// An extra thing to do with the chosen photos (see [GridScreen.selectionMenu]).
+class SelectionEntry {
+  const SelectionEntry(this.label, this.run, {this.removes = false});
+
+  final String label;
+  final Future<bool> Function(AssetActions actions, List<Asset> items) run;
+  final bool removes;
+}
+
 class GridScreen extends StatefulWidget {
   const GridScreen({
     super.key,
@@ -34,6 +43,7 @@ class GridScreen extends StatefulWidget {
     this.filterable = false,
     this.slideshow = true,
     this.menu = const [],
+    this.selectionMenu = const [],
   });
 
   final String title;
@@ -59,6 +69,10 @@ class GridScreen extends StatefulWidget {
 
   /// More entries for that menu (an album's Rename, Delete…): a label and what it does.
   final List<(String, VoidCallback)> menu;
+
+  /// More entries for the menu shown while photos are selected (a pet's "Not this pet"): a label, what it
+  /// does with the chosen photos (true when it worked), and whether they leave this grid afterwards.
+  final List<SelectionEntry> selectionMenu;
 
   @override
   State<GridScreen> createState() => GridScreenState();
@@ -133,10 +147,13 @@ class GridScreenState extends State<GridScreen> {
     if (ok && refresh) feed.refresh();
   }
 
+  Future<void> _runEntry(SelectionEntry e) => _act(e.run, removes: e.removes);
+
   List<Widget> _selectionActions() {
     final m = widget.mode;
     final isAdmin = context.read<Session>().user?.isAdmin == true;
     final all = _picked;
+    final handFixes = context.read<Session>().serverCanFixByHand;
     final anyNotFav = all.any((a) => !a.favorite);
     final more = <PopupMenuEntry<String>>[
       if (m != GridMode.trash && m != GridMode.locked) const PopupMenuItem(value: 'album', child: Text('Add to album')),
@@ -151,6 +168,12 @@ class GridScreenState extends State<GridScreen> {
       if (m == GridMode.archive) const PopupMenuItem(value: 'unarchive', child: Text('Unarchive')),
       if (m != GridMode.trash && m != GridMode.locked) const PopupMenuItem(value: 'trash', child: Text('Move to trash')),
       if (m == GridMode.trash && isAdmin) const PopupMenuItem(value: 'delete', child: Text('Delete for good')),
+      if (handFixes && (m == GridMode.library || m == GridMode.album)) ...const [
+        PopupMenuItem(value: 'turn', child: Text('Turn…')),
+        PopupMenuItem(value: 'pet', child: Text("It's a pet…")),
+      ],
+      for (var i = 0; i < widget.selectionMenu.length; i++)
+        PopupMenuItem(value: 'x$i', child: Text(widget.selectionMenu[i].label)),
     ];
     return [
       if (m == GridMode.trash)
@@ -188,6 +211,9 @@ class GridScreenState extends State<GridScreen> {
             'unarchive' => _act((a, i) => a.archive(i, false), removes: true),
             'trash' => _act((a, i) => a.trash(i), removes: true),
             'delete' => _act((a, i) => a.deleteForever(i), removes: true),
+            'turn' => _act((a, i) => a.turn(i), refresh: true),
+            'pet' => _act((a, i) => a.putInPet(i)),
+            _ when v.startsWith('x') => _runEntry(widget.selectionMenu[int.parse(v.substring(1))]),
             _ => null,
           },
         ),

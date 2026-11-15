@@ -18,7 +18,7 @@ The phone app for [Snapshots](https://github.com/TheDutchMan13/Snapshots), the s
 - **Stars, labels, pick and reject**, the **date** (set it, or move a batch by some hours), the **location** (a town or coordinates) and a **description**, from the photo's details or for a selection.
 - **Edit photos:** turn, mirror, straighten and crop. **Save** keeps only the recipe on the PC; your original file is not changed. An administrator can also choose **Save into the photo's file** (menu next to Save; needs Snapshots 0.15.0 or newer on the PC), which turns the file itself, JPEG and PNG only. The PC keeps the old file and can put it back.
 - **Comments** on photos and albums, and **Activity**: what others commented and added to albums.
-- **Calendar, Highlights, Events, Year in review and Pets**, under More.
+- **Calendar, Highlights, Events, Year in review and Pets**, under More. In a pet, select photos and choose **Not this pet** or **It's another pet…** to fix a mistake; in any photo grid, **It's a pet…** puts a photo Snapshots missed into a pet, and **Turn…** turns photos that are on their side. (These need Snapshots 0.15.2 or newer on the PC.)
 - **Smart albums** that fill themselves from rules (people, words, what's in the photo, dates, stars), and a **slideshow** of any page.
 
 ## Getting it on your phone

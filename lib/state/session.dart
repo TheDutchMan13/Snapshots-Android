@@ -82,6 +82,12 @@ class Session extends ChangeNotifier {
   /// Is the PC's Snapshots known to be new enough for that? (Unknown counts as no: the option stays hidden.)
   bool get serverCanChangeFiles => serverVersion != null && versionAtLeast(serverVersion, fileChangeServerVersion);
 
+  /// The first Snapshots that can move a photo to another pet, tag a missed pet, and turn photos by hand.
+  static const handFixServerVersion = '0.15.2';
+
+  /// Is the PC's Snapshots known to be new enough for those? (Unknown counts as no: they stay hidden.)
+  bool get serverCanFixByHand => serverVersion != null && versionAtLeast(serverVersion, handFixServerVersion);
+
   /// True when the PC runs a Snapshots older than the app needs for the safety checks.
   bool get serverTooOld => serverVersion != null && !versionAtLeast(serverVersion);
 

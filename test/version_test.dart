@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:snapshots_app/state/session.dart';
 import 'package:snapshots_app/ui/more_screen.dart';
 
 /// The version appears in pubspec.yaml (what the APK is called by Android) and in the app's More
@@ -18,5 +19,11 @@ void main() {
     expect(wf, contains(RegExp(r'flutter-version:\s*.?\d+\.\d+\.\d+')));
     expect(wf, contains('refs/tags/v'));
     expect(wf, contains('::error::'));
+  });
+
+  test('turning by hand and fixing pets need Snapshots 0.15.2 on the PC', () {
+    expect(Session.versionAtLeast('0.15.1', Session.handFixServerVersion), isFalse);
+    expect(Session.versionAtLeast('0.15.2', Session.handFixServerVersion), isTrue);
+    expect(Session.versionAtLeast('0.16.0', Session.handFixServerVersion), isTrue);
   });
 }

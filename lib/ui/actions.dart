@@ -119,6 +119,85 @@ class AssetActions {
       () => api.post('/api/albums/$albumId/remove', {'ids': [for (final a in items) a.id]}),
       done: '${_n(items)} removed from the album');
 
+  /// Pick one of the pets Snapshots found (null if there is none or nothing was picked).
+  Future<Map?> _pickPet({int? except}) async {
+    final pets = <Map>[];
+    try {
+      final r = await api.get('/api/pets');
+      pets.addAll([for (final j in r['pets'] as List) j as Map].where((p) => p['id'] != except));
+    } on ApiError catch (e) {
+      if (context.mounted) showMessage(context, e.message);
+      return null;
+    }
+    if (!context.mounted) return null;
+    if (pets.isEmpty) {
+      showMessage(context, 'There is no pet to choose yet. Pets show up once the same animal is in a few photos.');
+      return null;
+    }
+    return showModalBottomSheet<Map>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => ListView(children: [
+        for (final pet in pets)
+          ListTile(
+            leading: SizedBox(width: 48, height: 48, child: ClipOval(child: ServerThumb('/api/pets/${pet['id']}/thumb?c=${pet['cover'] ?? ''}', icon: Icons.pets))),
+            title: Text(petName(pet)),
+            subtitle: Text('${pet['photos']} photos'),
+            onTap: () => Navigator.pop(c, pet),
+          ),
+      ]),
+    );
+  }
+
+  static String petName(Map p) => (p['name'] as String?) ?? (p['species'] == 'cat' ? 'A cat' : p['species'] == 'dog' ? 'A dog' : 'A pet');
+
+  /// "This is them": put the photos in a pet, whoever they were taken for (or nobody).
+  Future<bool> putInPet(List<Asset> items, {int? except, String? title}) async {
+    final pet = await _pickPet(except: except);
+    if (pet == null || !context.mounted) return false;
+    return _try(() async {
+      final r = await api.post('/api/pets/${pet['id']}/add', {'ids': [for (final a in items) a.id]});
+      final n = ((r['moved'] as int?) ?? 0) + ((r['added'] as int?) ?? 0);
+      if (context.mounted) showMessage(context, '${n == 1 ? '1 photo' : '$n photos'} put in ${petName(pet)}');
+    });
+  }
+
+  /// "This isn't them": take the photos out of this pet.
+  Future<bool> notThisPet(int petId, List<Asset> items) => _try(
+      () => api.post('/api/pets/$petId/remove', {'ids': [for (final a in items) a.id]}),
+      done: '${_n(items)} taken out');
+
+  /// Turn photos by hand: a quarter, half or three quarters clockwise. Only the recipe changes, never the files.
+  Future<bool> turn(List<Asset> items) async {
+    final degrees = await showModalBottomSheet<int>(
+      context: context,
+      showDragHandle: true,
+      builder: (c) => Column(mainAxisSize: MainAxisSize.min, children: [
+        ListTile(leading: const Icon(Icons.rotate_right), title: const Text('Turn right'), onTap: () => Navigator.pop(c, 90)),
+        ListTile(leading: const Icon(Icons.swap_vert), title: const Text('Turn upside down'), onTap: () => Navigator.pop(c, 180)),
+        ListTile(leading: const Icon(Icons.rotate_left), title: const Text('Turn left'), onTap: () => Navigator.pop(c, 270)),
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 4, 16, 16),
+          child: Text('Your original files stay as they are. You can undo a turn in the photo\'s editor.'),
+        ),
+      ]),
+    );
+    if (degrees == null || !context.mounted) return false;
+    var turned = 0;
+    var skipped = 0;
+    final ok = await _try(() async {
+      for (var i = 0; i < items.length; i += 200) {
+        final r = await api.post('/api/assets/turn', {'ids': [for (final a in items.skip(i).take(200)) a.id], 'degrees': degrees});
+        turned += (r['turned'] as List).length;
+        skipped += (r['skipped'] as int?) ?? 0;
+      }
+    });
+    if (ok && context.mounted) {
+      showMessage(context, '${turned == 1 ? '1 photo' : '$turned photos'} turned${skipped > 0 ? ', $skipped could not be' : ''}');
+    }
+    return ok;
+  }
+
   static Future<Directory> _shareDir() async => Directory(p.join((await getTemporaryDirectory()).path, 'share'));
 
   /// Deletes the originals downloaded for sharing (on app start and after the locked folder).
