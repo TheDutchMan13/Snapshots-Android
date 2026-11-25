@@ -96,7 +96,9 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _turn() => setState(() {
-        _rotate = (_rotate + 270) % 360; // a quarter turn to the left, as the button shows
+        // A quarter turn to the left, as the button shows. The picture is turned first and mirrored after, so
+        // on a mirrored picture the quarter goes the other way in the recipe.
+        _rotate = (_rotate + (_flip ? 90 : 270)) % 360;
         _crop = [0, 0, 1, 1];
         if (_ratio != null) _fitRatio();
       });

@@ -44,6 +44,7 @@ class GridScreen extends StatefulWidget {
     this.slideshow = true,
     this.menu = const [],
     this.selectionMenu = const [],
+    this.petTagging = true,
   });
 
   final String title;
@@ -73,6 +74,9 @@ class GridScreen extends StatefulWidget {
   /// More entries for the menu shown while photos are selected (a pet's "Not this pet"): a label, what it
   /// does with the chosen photos (true when it worked), and whether they leave this grid afterwards.
   final List<SelectionEntry> selectionMenu;
+
+  /// Offer "It's a pet…" for the chosen photos (not on a pet's own screen, which has "It's another pet…").
+  final bool petTagging;
 
   @override
   State<GridScreen> createState() => GridScreenState();
@@ -168,9 +172,9 @@ class GridScreenState extends State<GridScreen> {
       if (m == GridMode.archive) const PopupMenuItem(value: 'unarchive', child: Text('Unarchive')),
       if (m != GridMode.trash && m != GridMode.locked) const PopupMenuItem(value: 'trash', child: Text('Move to trash')),
       if (m == GridMode.trash && isAdmin) const PopupMenuItem(value: 'delete', child: Text('Delete for good')),
-      if (handFixes && (m == GridMode.library || m == GridMode.album)) ...const [
-        PopupMenuItem(value: 'turn', child: Text('Turn…')),
-        PopupMenuItem(value: 'pet', child: Text("It's a pet…")),
+      if (handFixes && (m == GridMode.library || m == GridMode.album)) ...[
+        const PopupMenuItem(value: 'turn', child: Text('Turn…')),
+        if (widget.petTagging) const PopupMenuItem(value: 'pet', child: Text("It's a pet…")),
       ],
       for (var i = 0; i < widget.selectionMenu.length; i++)
         PopupMenuItem(value: 'x$i', child: Text(widget.selectionMenu[i].label)),

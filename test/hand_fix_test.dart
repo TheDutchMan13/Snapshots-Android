@@ -105,6 +105,7 @@ void main() {
       await settle(tester, rounds: 6);
       expect(find.text('Not this pet'), findsOneWidget);
       expect(find.text("It's another pet…"), findsOneWidget);
+      expect(find.text("It's a pet…"), findsNothing);      // that is for photos of no pet yet, not on a pet's screen
       await tester.tap(find.text(label));
       await settle(tester, rounds: 6);
     }

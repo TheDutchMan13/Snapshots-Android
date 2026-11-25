@@ -444,6 +444,7 @@ class _PetScreenState extends State<PetScreen> {
       feed: _feed,
       emptyText: 'No photos of this pet.',
       filterable: true,
+      petTagging: false,
       actions: [
         PopupMenuButton<String>(
           itemBuilder: (_) => [PopupMenuItem(value: 'name', child: Text(_name == null ? 'Add a name' : 'Rename'))],

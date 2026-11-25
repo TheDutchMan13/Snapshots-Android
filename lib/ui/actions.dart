@@ -185,17 +185,25 @@ class AssetActions {
     if (degrees == null || !context.mounted) return false;
     var turned = 0;
     var skipped = 0;
-    final ok = await _try(() async {
+    String? failure;
+    try {
       for (var i = 0; i < items.length; i += 200) {
         final r = await api.post('/api/assets/turn', {'ids': [for (final a in items.skip(i).take(200)) a.id], 'degrees': degrees});
         turned += (r['turned'] as List).length;
         skipped += (r['skipped'] as int?) ?? 0;
       }
-    });
-    if (ok && context.mounted) {
-      showMessage(context, '${turned == 1 ? '1 photo' : '$turned photos'} turned${skipped > 0 ? ', $skipped could not be' : ''}');
+    } on ApiError catch (e) {
+      failure = e.message; // some may have been turned before this: say how many, and show them again
     }
-    return ok;
+    if (context.mounted) {
+      final count = turned == 1 ? '1 photo' : '$turned photos';
+      showMessage(
+          context,
+          failure != null
+              ? (turned > 0 ? '$count turned, then it stopped: $failure' : failure)
+              : '$count turned${skipped > 0 ? ', $skipped could not be' : ''}');
+    }
+    return turned > 0;
   }
 
   static Future<Directory> _shareDir() async => Directory(p.join((await getTemporaryDirectory()).path, 'share'));
