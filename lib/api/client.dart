@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 
 /// Something the server said no to, with the server's own words when it gave any.
@@ -34,11 +35,52 @@ class Api {
       // (signing in doesn't have one yet).
       headers: {'Accept': 'application/json', 'X-Snapshots-Request': '1'},
     ));
-    dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) {
+    dio.interceptors.add(InterceptorsWrapper(onRequest: (o, h) async {
+      if (!await routeIsSafe()) {
+        h.reject(DioException(requestOptions: o, error: ApiError(tailscaleOff), type: DioExceptionType.unknown));
+        return;
+      }
       if (token != null) o.headers['Authorization'] = 'Bearer $token';
       if (deviceCookie != null) o.headers['Cookie'] = 'snapshots_device=$deviceCookie';
       h.next(o);
     }));
+  }
+
+  static const tailscaleOff = 'Tailscale is off on this phone. Turn it on, then try again: without it, the PC\'s '
+      'Tailscale address could belong to another device on this network, which would get your sign-in.';
+
+  /// Is a VPN (Tailscale) carrying the phone's traffic just now? A seam for tests.
+  static Future<bool> Function() vpnActive = () async {
+    try {
+      return (await Connectivity().checkConnectivity()).contains(ConnectivityResult.vpn);
+    } catch (_) {
+      return true; // can't tell: as before this check existed
+    }
+  };
+
+  /// True for a 100.64.0.0/10 address. Tailscale uses these, but so do some mobile and hotel networks
+  /// (carrier-grade NAT), where the same number can be someone else's device.
+  static bool sharedRange(String input) {
+    final host = Uri.tryParse(normalizeServer(input))?.host ?? '';
+    final ip = host.split('.');
+    if (ip.length != 4 || !ip.every((p) => int.tryParse(p) != null)) return false;
+    final a = int.parse(ip[0]), b = int.parse(ip[1]);
+    return a == 100 && b >= 64 && b <= 127;
+  }
+
+  bool _routeOk = true;
+  DateTime _routeChecked = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// For a 100.x address over plain http: only while Tailscale is on (checked at most every 10 seconds).
+  /// Other addresses: always (the sign-in screen warns about plain http to them).
+  Future<bool> routeIsSafe() async {
+    if (!server.startsWith('http://') || !sharedRange(server)) return true;
+    final now = DateTime.now();
+    if (now.difference(_routeChecked) > const Duration(seconds: 10)) {
+      _routeOk = await vpnActive();
+      _routeChecked = now;
+    }
+    return _routeOk;
   }
 
   final String server;
@@ -80,8 +122,9 @@ class Api {
     return true;
   }
 
-  /// Headers for images and videos loaded straight from the server.
-  Map<String, String> get authHeaders => {if (token != null) 'Authorization': 'Bearer $token'};
+  /// Headers for images and videos loaded straight from the server (none while the route isn't safe:
+  /// see routeIsSafe, which every API request checks first).
+  Map<String, String> get authHeaders => {if (token != null && _routeOk) 'Authorization': 'Bearer $token'};
 
   String url(String path) => '$server$path';
 
@@ -117,6 +160,7 @@ class Api {
   }
 
   ApiError toApiError(DioException e) {
+    if (e.error is ApiError) return e.error as ApiError;
     final r = e.response;
     if (r == null) {
       if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {

@@ -62,6 +62,35 @@ void main() {
     expect(fake.asked.single.headers['Authorization'], 'Bearer secret');
   });
 
+  test('a 100.x address is only used while Tailscale is on', () async {
+    final saved = Api.vpnActive;
+    addTearDown(() => Api.vpnActive = saved);
+    var vpn = false;
+    Api.vpnActive = () async => vpn;
+    final fake = FakeServer((_) => {'/api/status': (200, {'ok': true})});
+    final api = Api(server: '100.101.102.103:8080', token: 'secret')..dio.httpClientAdapter = fake;
+    await expectLater(api.get('/api/status'),
+        throwsA(isA<ApiError>().having((e) => e.message, 'm', Api.tailscaleOff)));
+    expect(fake.asked, isEmpty); // nothing, not even the token, left the phone
+    expect(api.authHeaders, isEmpty); // pictures don't carry the token either
+
+    vpn = true;
+    final again = Api(server: '100.101.102.103:8080', token: 'secret')..dio.httpClientAdapter = fake;
+    await again.get('/api/status');
+    expect(fake.asked.single.headers['Authorization'], 'Bearer secret');
+    expect(again.authHeaders['Authorization'], 'Bearer secret');
+
+    // Other addresses are not checked (the sign-in screen warns about plain http to them); nor is https.
+    vpn = false;
+    for (final s in ['pc.tail1.ts.net', '192.168.1.20:8080', 'https://100.101.102.103']) {
+      final other = Api(server: s, token: 't')..dio.httpClientAdapter = fake;
+      await other.get('/api/status');
+    }
+    expect(Api.sharedRange('100.64.0.1'), isTrue);
+    expect(Api.sharedRange('100.128.0.1'), isFalse);
+    expect(Api.sharedRange('10.0.0.1'), isFalse);
+  });
+
   test('errors carry the server\'s own sentence, and 401 signs out', () async {
     var signedOut = false;
     final fake = FakeServer((_) => {

@@ -34,7 +34,7 @@ Needs Android 7 or newer, and Snapshots 0.14.7 or newer on the PC.
 
 ## Reaching your PC
 
-The app talks to Snapshots over plain HTTP, the same address you use in a browser. Use your PC's **Tailscale** address so it works away from home too: Tailscale encrypts the connection. Snapshots must be running on the PC (Settings > Windows and more > **Start with Windows** keeps it running).
+The app talks to Snapshots over plain HTTP, the same address you use in a browser. Use your PC's **Tailscale** address so it works away from home too: Tailscale encrypts the connection. The app only uses a `100.x.y.z` address while Tailscale is on, because some mobile and hotel networks use the same numbers for other devices. Snapshots must be running on the PC (Settings > Windows and more > **Start with Windows** keeps it running).
 
 ## Building it yourself
 
